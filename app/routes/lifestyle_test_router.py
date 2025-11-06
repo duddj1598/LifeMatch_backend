@@ -1,4 +1,3 @@
-# app/routes/lifestyle_test_router.py
 
 from fastapi import APIRouter, HTTPException, Body
 from app.schemas.lifestyle_test_schema import (
@@ -9,7 +8,7 @@ from app.services import lifestyle_test_service
 
 router = APIRouter(
     prefix="/user", 
-    tags=["Lifestyle Test"] # API 문서(Swagger)의 카테고리
+    tags=["Lifestyle Test"]
 )
 
 @router.get(
