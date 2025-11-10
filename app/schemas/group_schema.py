@@ -6,3 +6,4 @@ class GroupCreate(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     max_member: Optional[int] = 10
+    
