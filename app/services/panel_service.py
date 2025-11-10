@@ -1,5 +1,4 @@
 def search(query: str):
-    #search 라는 함수가 있다고 가정
     return [
         {
             "nickname": "홍길동",

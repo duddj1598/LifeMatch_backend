@@ -1,4 +1,3 @@
-# 'db'를 사용하기 위해 import 합니다.
 from app.config.firebase_config import db 
 
 from app.schemas.lifestyle_test_schema import (
@@ -179,21 +178,17 @@ def process_test_results(submission: LifestyleTestSubmission) -> dict:
             break
             
     if final_result_detail is None:
-        final_result_detail = ALL_LIFESTYLE_TYPES_DATA[2] # '알뜰살뜰 실속파'를 기본값으로
+        final_result_detail = ALL_LIFESTYLE_TYPES_DATA[2]
 
-    # --- 💡 (추가된 부분) Firebase DB에 사용자 유형 저장 ---
     try:
-        # 1. users 컬렉션에서 user_id로 해당 유저 문서를 찾습니다.
+
         user_ref = db.collection("users").document(user_id)
         
-        # 2. 해당 유저 문서에 'user_lifestyle_type' 필드를 추가(업데이트)합니다.
         user_ref.update({
             "user_lifestyle_type": highest_type_name
         })
     except Exception as e:
-        # 만약 유저를 못찾거나 DB 오류가 나도, 일단 결과는 반환하도록 처리
         print(f"Error updating user lifestyle type: {e}")
-    # --- (추가된 부분 끝) ---
 
     mock_result = {
         "status": 200,
