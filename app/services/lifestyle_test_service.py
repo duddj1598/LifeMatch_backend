@@ -1,3 +1,4 @@
+from app.config.firebase_config import db 
 
 from app.schemas.lifestyle_test_schema import (
     LifestyleQuestionsResponse, LifestyleTypesResponse, 
@@ -139,8 +140,8 @@ def get_lifestyle_types() -> dict:
 
 def process_test_results(submission: LifestyleTestSubmission) -> dict:
     """
-    제출된 답변을 기반으로 점수를 계산하여 결과를 반환합니다.
-    (문서 로직에 맞게 복합 로직으로 수정)
+    제출된 답변을 기반으로 점수를 계산하여 결과를 반환하고,
+    사용자 DB에 유형을 저장합니다. (수정됨)
     """
     
     user_id = submission.user_id
@@ -177,7 +178,17 @@ def process_test_results(submission: LifestyleTestSubmission) -> dict:
             break
             
     if final_result_detail is None:
-        final_result_detail = ALL_LIFESTYLE_TYPES_DATA[2] # '알뜰살뜰 실속파'를 기본값으로
+        final_result_detail = ALL_LIFESTYLE_TYPES_DATA[2]
+
+    try:
+
+        user_ref = db.collection("users").document(user_id)
+        
+        user_ref.update({
+            "user_lifestyle_type": highest_type_name
+        })
+    except Exception as e:
+        print(f"Error updating user lifestyle type: {e}")
 
     mock_result = {
         "status": 200,
