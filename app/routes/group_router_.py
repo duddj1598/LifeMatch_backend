@@ -9,7 +9,6 @@ router = APIRouter(prefix="/api/group", tags=["Group"])
 def create_group_api(group: GroupCreate):
     try:
         result = create_group(group)
-        # create_group already returns a dict with status/message/group_id/chat_id
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
