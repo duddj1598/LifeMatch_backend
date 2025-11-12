@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException, Body
 from app.schemas.lifestyle_test_schema import (
     LifestyleQuestionsResponse, LifestyleTypesResponse, 
