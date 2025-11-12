@@ -6,8 +6,6 @@ from fastapi import HTTPException
 def create_group(group: GroupCreate):
     group_data = group.dict()
     group_data["created_at"] = datetime.utcnow()
-    group_data["current_member"] = 1
-    group_data["members"] = [group_data.get("leader_id")]
     doc_ref = db.collection("groups").document()
     doc_ref.set(group_data)
     return {"status": 200, "message": "그룹 생성 성공", "group_id": doc_ref.id}
