@@ -7,7 +7,7 @@ class GroupCreate(BaseModel):
     category: Optional[str] = None
     max_member: Optional[int] = 10
     leader_id: Optional[str] = None
-    group_image: Optional[str] = None  # 이미지 URL
+    group_image: Optional[str] = None
 
 class GroupUpdate(BaseModel):
     group_name: Optional[str]
@@ -28,7 +28,9 @@ class GroupDetailResponse(BaseModel):
     current_member: int
     description: Optional[str]
     leader_nickname: Optional[str]
+    leader_interest: Optional[str]  #팀장 관심사/유형 추가
     group_image: Optional[str]
+    leader_id: Optional[str]        #팀장 ID 추가
 
 class GroupMember(BaseModel):
     user_id: str

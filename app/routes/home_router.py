@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
-from app.schemas.home_schema import HomeResponse, OtherRecommendationsResponse # 👈 (수정)
+from app.schemas.home_schema import HomeResponse, OtherRecommendationsResponse
 from app.services import home_service 
 
 router = APIRouter(
@@ -24,7 +24,6 @@ def get_home_data(user_id: str = Query(..., description="로그인한 사용자(
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"데이터 조회 중 오류: {str(e)}")
 
-# --- ▼ (추가된 부분) ---
 
 @router.get(
     "/recommendations/other",
@@ -41,4 +40,4 @@ def get_other_home_data(user_id: str = Query(..., description="로그인한 사�
         return results
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"데이터 조회 중 오류: {str(e)}")
-# --- ▲ (추가된 부분) ---
+    
