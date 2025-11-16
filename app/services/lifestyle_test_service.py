@@ -144,6 +144,86 @@ def process_test_results(submission: LifestyleTestSubmission) -> dict:
     사용자 DB에 유형을 저장합니다. (수정됨)
     """
     
+    user_id_email = submission.user_id # (이 값은 "test1@gmail.com" 같은 이메일)
+    selected_ids = submission.selected_option_ids
+    
+    # --- 1. (점수 계산 로직) ---
+    scores = {
+        "자기관리형 웰니스족": 0,
+        "디지털 트렌드세터": 0,
+        "알뜰살뜰 실속파": 0,
+        "감성 충만 아티스트": 0,
+        "소박한 힐링주의자": 0
+    }
+    
+    for option_id in selected_ids:
+        for type_name, scoring_ids in TYPE_SCORING_MAP_COMPLEX.items():
+            if option_id in scoring_ids:
+                scores[type_name] += 1
+
+    if not scores:
+        highest_type_name = "알뜰살뜰 실속파"
+    else:
+        highest_type_name = max(scores, key=scores.get)
+        if scores[highest_type_name] == 0:
+            highest_type_name = "소박한 힐링주의자" 
+
+    final_result_detail = None
+    for type_data in ALL_LIFESTYLE_TYPES_DATA:
+        if type_data["type_name"] == highest_type_name:
+            final_result_detail = type_data
+            break
+            
+    if final_result_detail is None:
+        final_result_detail = ALL_LIFESTYLE_TYPES_DATA[2] # (기본값)
+
+    # --- 2. ⭐️ (수정된 DB 저장 로직) ⭐️ ---
+    try:
+        users_ref = db.collection("users")
+        
+        # ⭐️ 2-1. (필수) 이메일로 유저 문서를 '검색'합니다.
+        query_email = users_ref.where("user_email", "==", user_id_email).limit(1).stream()
+
+        found_doc = None
+        for doc in query_email:
+            found_doc = doc
+            break
+
+        if not found_doc:
+            # (이론상 이 오류는 발생하지 않아야 함)
+            print(f"Error: User not found with email {user_id_email}")
+        else:
+            # ⭐️ 2-2. 검색된 문서의 '실제 ID' (예: 2xYq...pA9)로 'user_ref'를 가져옵니다.
+            user_ref = users_ref.document(found_doc.id)
+            
+            # ⭐️ 2-3. 저장할 원본 응답 데이터 (dict)
+            survey_data_to_save = {
+                "selected_option_ids": selected_ids
+            }
+            
+            # ⭐️ 2-4. 두 필드를 한꺼번에 업데이트합니다.
+            user_ref.update({
+                "user_lifestyle_type": highest_type_name,  # (최종 유형)
+                "user_survey_response": survey_data_to_save # (원본 응답)
+            })
+            print(f"Successfully updated lifestyle type for {user_id_email}")
+
+    except Exception as e:
+        print(f"Error updating user lifestyle type: {e}") # 👈 (여기서 오류 확인)
+
+    # --- 3. (결과 반환 로직) ---
+    mock_result = {
+        "status": 200,
+        "user_id": user_id_email,
+        "result": final_result_detail
+    }
+    
+    return mock_result
+    """
+    제출된 답변을 기반으로 점수를 계산하여 결과를 반환하고,
+    사용자 DB에 유형을 저장합니다. (수정됨)
+    """
+    
     user_id = submission.user_id
     selected_ids = submission.selected_option_ids
     
@@ -181,12 +261,20 @@ def process_test_results(submission: LifestyleTestSubmission) -> dict:
         final_result_detail = ALL_LIFESTYLE_TYPES_DATA[2]
 
     try:
-
         user_ref = db.collection("users").document(user_id)
-        
+
+        # ⭐️ 1. user_schema의 'user_survey_response: dict'에 저장할 딕셔너리 생성
+        # (submission.selected_option_ids는 [1, 3, 5, ...] 같은 리스트입니다)
+        survey_data_to_save = {
+            "selected_option_ids": submission.selected_option_ids
+            # (선택: 나중에 여기에 "answered_at": datetime.utcnow() 등을 추가해도 좋습니다)
+        }
+
+        # ⭐️ 2. update 함수에 두 필드를 한꺼번에 저장
         user_ref.update({
-            "user_lifestyle_type": highest_type_name
-        })
+            "user_lifestyle_type": highest_type_name,  # (기존) 최종 유형 이름
+            "user_survey_response": survey_data_to_save # ⭐️ (추가) 원본 응답
+            })
     except Exception as e:
         print(f"Error updating user lifestyle type: {e}")
 
