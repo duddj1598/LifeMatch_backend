@@ -8,13 +8,19 @@ from typing import Dict, Optional
 
 from app.services.lifestyle_test_service import ALL_LIFESTYLE_TYPES_DATA
 
-def _get_lifestyle_details(type_name: str) -> Optional[LifestyleTypeInfo]:
+def _get_lifestyle_details(type_name: str):
     if not type_name:
         return None
+
+    # 🔥 문자열 정규화 (앞뒤 공백 제거 + 중간 공백 제거)
+    normalized = type_name.strip().replace(" ", "")
+
     for type_data in ALL_LIFESTYLE_TYPES_DATA:
-        if type_data["type_name"] == type_name:
+        if type_data["type_name"].strip().replace(" ", "") == normalized:
             return LifestyleTypeInfo(**type_data)
+
     return None
+
 
 def get_user_profile(user_id: str) -> dict:
     user_ref = db.collection("users").document(user_id)
