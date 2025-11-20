@@ -1,75 +1,56 @@
-from fastapi import APIRouter, HTTPException, Query
-from app.schemas.group_schema import GroupCreate, GroupUpdate
-from app.services.group_service import (
-    create_group, update_group, get_group_list, get_group_detail,
-    get_group_members, get_my_groups, join_group, invite_member, leave_group
-)
+from fastapi import APIRouter, HTTPException, Query, status
+from typing import List, Optional
+from app.schemas.group_schema import GroupCreate, GroupRead
+from app.services.group_service import create_group, search_groups, get_group_by_id
 
 router = APIRouter(prefix="/api/group", tags=["Group"])
 
-@router.post("/create")
+@router.post("/create", response_model=dict, status_code=status.HTTP_201_CREATED)
 def create_group_api(group: GroupCreate):
     try:
-        return create_group(group)
+        result = create_group(group)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.patch("/{group_id}")
-def update_group_api(group_id: str, group: GroupUpdate):
-    try:
-        return update_group(group_id, group)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/list")
-def get_group_list_api(
-    category: str = Query(None),
-    page: int = 1,
-    size: int = 10
+# 그룹 목록 조회 및 검색 엔드포인트
+@router.get("", response_model=List[GroupRead])
+def list_or_search_groups(
+    # GET 요청의 쿼리 파라미터(검색 조건)를 정의
+    q: Optional[str] = Query(None, alias="q", description="그룹 이름 부분 검색"),
+    category: Optional[str] = Query(None, description="카테고리 정확 매칭"),
+    min_member: Optional[int] = Query(None, ge=1, description="최소 멤버 수"),
+    max_member: Optional[int] = Query(None, ge=1, description="최대 멤버 수"),
+    sort_by: str = Query("created_at", description="정렬 필드"),
+    desc: bool = Query(True, description="내림차순 정렬 여부"),
+    limit: int = Query(50, ge=1, le=200, description="조회 수"),
+    offset: int = Query(0, ge=0, description="오프셋")
 ):
     try:
-        return get_group_list(category, page, size)
+        # 검색 조건에 따라 그룹 목록을 조회
+        results = search_groups(
+            group_name=q,
+            category=category,
+            min_member=min_member,
+            max_member=max_member,
+            sort_by=sort_by,
+            desc=desc,
+            limit=limit,
+            offset=offset
+        )
+        return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{group_id}")
-def get_group_detail_api(group_id: str):
+# 그룹 상세 조회 엔드포인트
+@router.get("/{group_id}", response_model=GroupRead)
+def read_group_api(group_id: str):
     try:
-        return get_group_detail(group_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/{group_id}/members")
-def get_group_members_api(group_id: str):
-    try:
-        return get_group_members(group_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/my")
-def get_my_groups_api(user_id: str):
-    try:
-        return get_my_groups(user_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/{group_id}/join")
-def join_group_api(group_id: str, user_id: str):
-    try:
-        return join_group(group_id, user_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/{group_id}/invite")
-def invite_member_api(group_id: str, user_id: str):
-    try:
-        return invite_member(group_id, user_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/{group_id}/leave")
-def leave_group_api(group_id: str, user_id: str):
-    try:
-        return leave_group(group_id, user_id)
+        group = get_group_by_id(group_id)
+        if group is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        return group
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -23,7 +23,7 @@ def login_user(id: str, password: str):
     users_ref = db.collection("users")
     # id로 이메일 또는 닉네임 검색
     query_email = users_ref.where("user_email", "==", id).stream()
-    query_nick = users_ref.where("user_nickname", "==", id).stream()
+    query_id = users_ref.where("user_id", "==", id).stream()
 
     # ⭐️ 1. 'found_user'를 먼저 찾습니다.
     found_user = None
@@ -31,7 +31,7 @@ def login_user(id: str, password: str):
         found_user = doc.to_dict()
         break
     if not found_user:
-        for doc in query_nick:
+        for doc in query_id:
             found_user = doc.to_dict()
             break
 
@@ -48,7 +48,8 @@ def login_user(id: str, password: str):
 
     # ✅ JWT 토큰 생성
     payload = {
-        "sub": id,
+        "email": found_user.get("user_email"),
+        "id": found_user.get("user_id"),
         "exp": datetime.utcnow() + timedelta(hours=12),  # 12시간 유효
         "nickname": found_user.get("user_nickname"),
     }
