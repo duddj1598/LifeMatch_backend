@@ -1,5 +1,5 @@
 from app.config.firebase_config import db
-from app.services.group_service import _add_member_to_group 
+from app.services.group_service import _add_member_to_group
 from fastapi import HTTPException
 from google.cloud.firestore_v1.base_query import FieldFilter
 from typing import List

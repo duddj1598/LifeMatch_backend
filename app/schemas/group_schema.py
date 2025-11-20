@@ -9,6 +9,11 @@ class GroupCreate(BaseModel):
     leader_id: Optional[str] = None
     group_image: Optional[str] = None
 
+class GroupRead(GroupCreate):
+    id: str
+    created_at: Optional[str] = None # ISO 포맷 문자열로 변환하여 저장하므로 str
+    chat_id: Optional[str] = None
+
 class GroupUpdate(BaseModel):
     group_name: Optional[str]
     description: Optional[str]

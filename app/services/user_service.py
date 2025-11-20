@@ -23,14 +23,14 @@ def login_user(id: str, password: str):
 
     users_ref = db.collection("users")
     query_email = users_ref.where("user_email", "==", id).stream()
-    query_nick = users_ref.where("user_nickname", "==", id).stream()
+    query_id = users_ref.where("user_id", "==", id).stream()
 
     found_user = None
     for doc in query_email:
         found_user = doc.to_dict()
         break
     if not found_user:
-        for doc in query_nick:
+        for doc in query_id:
             found_user = doc.to_dict()
             break
 
@@ -44,8 +44,9 @@ def login_user(id: str, password: str):
         raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다.")
 
     payload = {
-        "sub": id,
-        "exp": datetime.utcnow() + timedelta(hours=12),
+        "email": found_user.get("user_email"),
+        "id": found_user.get("user_id"),
+        "exp": datetime.utcnow() + timedelta(hours=12),  # 12시간 유효
         "nickname": found_user.get("user_nickname"),
     }
     access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
