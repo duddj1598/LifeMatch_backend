@@ -6,17 +6,8 @@ class UserCreate(BaseModel):
     user_id : str
     user_nickname: str
     user_password: str
-
-    '''(추가됨)본인 확인 질문/답변 저장용 필드'''
     user_security_question: str
     user_security_answer: str
-    '''(추가됨)본인 확인 질문/답변 저장용 필드'''
-
-    user_lifestyle_vector: Optional[list] = []
-    user_joined_groups_id: Optional[int] = None
-    user_owned_groups_id: Optional[int] = None
-    panel_id: Optional[int] = None
-    user_lifestyle_type: Optional[str] = None
 
 '''추가됨'''
 class FindIdRequest(BaseModel):
