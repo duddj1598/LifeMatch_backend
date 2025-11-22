@@ -1,64 +1,87 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
-from app.services.chat_service import (
-    get_chat_list, leave_chat_room, send_message, get_chat_history
-)
-from app.schemas.chat_schema import ChatMessageCreate
-from app.middleware.auth import verify_token
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
+
+from app.schemas.chat_schema import ChatMessageCreate
+from app.services.chat_service import (
+    get_chat_list,
+    leave_chat_room,
+    send_message,
+    get_chat_history,
+)
+from app.middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 
-def get_current_user(authorization: str = Header(...)):
-    """Authorization 헤더에서 JWT 토큰 검증"""
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-    
-    token = authorization.replace("Bearer ", "")
-    payload = verify_token(token)
-    return payload.get("sub")  # user_email 또는 user_id 반환
-
-
+# -------------------------------------------------
+# 🔒 채팅방 목록 조회 (내가 속한 소모임 채팅)
+# -------------------------------------------------
 @router.get("/list")
-def chat_room_list(current_user: str = Depends(get_current_user)):
-    """유저의 소모임 채팅방 목록 조회"""
+def chat_room_list(current_user: dict = Depends(get_current_user)):
+    """
+    JWT 기준 현재 로그인한 사용자가 속한 소모임 채팅방 목록 조회
+    """
     try:
-        return get_chat_list(current_user)
+        user_id = current_user["user_doc_id"]  # Firestore users 문서 ID
+        return get_chat_list(user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# -------------------------------------------------
+# 🔒 채팅방 퇴장
+# -------------------------------------------------
 @router.delete("/leave")
-def chat_leave(chat_id: str, current_user: str = Depends(get_current_user)):
-    """유저가 속한 소모임 채팅방에서 퇴장합니다"""
+def chat_leave(
+    chat_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    현재 로그인한 사용자가 특정 채팅방(=group_id)에서 나가기
+    """
     try:
-        return leave_chat_room(chat_id, current_user)
+        user_id = current_user["user_doc_id"]
+        return leave_chat_room(chat_id, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# -------------------------------------------------
+# 🔒 메시지 보내기
+# -------------------------------------------------
 @router.post("/{chat_id}/message")
 def chat_send_message(
-    chat_id: str, 
+    chat_id: str,
     payload: ChatMessageCreate,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
-    """채팅방에 보낼 메시지를 입력합니다"""
+    """
+    채팅방에 메시지 전송
+    """
     try:
-        return send_message(chat_id, current_user, payload)
+        user_id = current_user["user_doc_id"]
+        return send_message(chat_id, user_id, payload)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# -------------------------------------------------
+# 🔒 채팅 내역 조회 (페이징)
+# -------------------------------------------------
 @router.get("/{chat_id}/message")
 def chat_history(
-    chat_id: str, 
-    message_id: Optional[str] = None, 
+    chat_id: str,
+    message_id: Optional[int] = None,
     size: int = 10,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
-    """채팅방 참여자의 채팅 내역을 불러옵니다"""
+    """
+    채팅 내역 조회  
+    - message_id 없으면: 최신 메시지부터 size개  
+    - message_id 있으면: 그 message_id보다 이전 메시지들 중 size개 (위로 스크롤)
+    """
     try:
-        return get_chat_history(chat_id, current_user, message_id, size)
+        user_id = current_user["user_doc_id"]
+        return get_chat_history(chat_id, user_id, message_id, size)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

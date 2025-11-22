@@ -6,7 +6,6 @@ class GroupCreate(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     max_member: Optional[int] = 10
-    leader_id: Optional[str] = None
     group_image: Optional[str] = None
 
 class GroupRead(GroupCreate):

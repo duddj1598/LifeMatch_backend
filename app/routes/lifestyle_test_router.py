@@ -1,56 +1,69 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Depends, Body
 from app.schemas.lifestyle_test_schema import (
-    LifestyleQuestionsResponse, LifestyleTypesResponse, 
-    LifestyleTestSubmission, LifestyleTestResultResponse
+    LifestyleQuestionsResponse,
+    LifestyleTypesResponse,
+    LifestyleTestSubmission,
+    LifestyleTestResultResponse
 )
 from app.services import lifestyle_test_service
+from app.middleware.auth import get_current_user
 
 router = APIRouter(
-    prefix="/user", 
+    prefix="/api/lifestyle-test",
     tags=["Lifestyle Test"]
 )
 
+
+# -------------------------------------------------
+# 질문 목록 조회 (JWT 필요 없음)
+# -------------------------------------------------
 @router.get(
-    "/lifestyle-test/questions", 
+    "/questions",
     response_model=LifestyleQuestionsResponse,
     summary="유형 검사 질문 목록 조회"
 )
 def get_questions():
-    """
-    사용자의 라이프스타일 유형을 파악하기 위한 질문 목록을 조회합니다.
-    """
     try:
-        results = lifestyle_test_service.get_test_questions()
-        return results
+        return lifestyle_test_service.get_test_questions()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"질문 조회 중 오류 발생: {str(e)}")
 
+
+# -------------------------------------------------
+# 전체 라이프스타일 유형 목록 조회
+# -------------------------------------------------
 @router.get(
-    "/lifestyle-types",
+    "/types",
     response_model=LifestyleTypesResponse,
     summary="전체 라이프스타일 유형 조회"
 )
 def get_all_types():
-    """
-    LifeMatch 서비스에서 정의한 전체 라이프스타일 유형의 목록과 설명을 조회합니다.
-    """
     try:
-        results = lifestyle_test_service.get_lifestyle_types()
-        return results
+        return lifestyle_test_service.get_lifestyle_types()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"유형 목록 조회 중 오류 발생: {str(e)}")
 
+
+# -------------------------------------------------
+# 🔒 검사지 제출 → 결과 반환 + Firestore 저장
+# -------------------------------------------------
 @router.post(
-    "/lifestyle-test/result",
+    "/result",
     response_model=LifestyleTestResultResponse,
     summary="유형 검사 결과 제출 및 도출"
 )
-def submit_test(submission: LifestyleTestSubmission = Body(...)):
+def submit_test(
+    submission: LifestyleTestSubmission = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
     """
-    사용자가 선택한 답변(option_ids)을 제출받아 라이프스타일 유형 검사 결과를 반환합니다.
+    이제 user_id를 Body로 받지 않음.
+    JWT에서 가져온 유저 ID를 기반으로 Firestore에 결과 저장.
     """
     try:
-        result = lifestyle_test_service.process_test_results(submission)
-        return result
+        return lifestyle_test_service.process_test_results(
+            current_user["user_doc_id"],   # <-- Firestore 문서 ID
+            submission.selected_option_ids
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"결과 처리 중 오류 발생: {str(e)}")
