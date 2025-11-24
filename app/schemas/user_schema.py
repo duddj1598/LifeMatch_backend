@@ -17,7 +17,7 @@ class FindIdRequest(BaseModel):
 
 class FindIdResponse(BaseModel):
     status: int
-    user_nickname: str
+    user_id: str
 
 class ResetPasswordRequest(BaseModel):
     login_id: str

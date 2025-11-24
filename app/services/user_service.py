@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException
 import jwt
 import os
+from google.cloud.firestore_v1 import FieldFilter
 
 SECRET_KEY = os.getenv("JWT_SECRET", "your-secret-key")
 ALGORITHM = "HS256"
@@ -76,9 +77,10 @@ def login_user(login_id: str, password: str):
 
 def find_user_id(email: str, question: str, answer: str) -> str:
     users_ref = db.collection("users")
-    query = users_ref.where("user_email", "==", email).limit(1).stream()
-
+    query_ref = users_ref.where(filter=FieldFilter('user_email', '==', email))
+    
     found_user = None
+    query = query_ref.get()
     for doc in query:
         found_user = doc.to_dict()
         break
@@ -91,7 +93,6 @@ def find_user_id(email: str, question: str, answer: str) -> str:
         found_user.get("user_security_answer") != answer
     ):
         raise HTTPException(status_code=401, detail="본인 확인 정보가 일치하지 않습니다.")
-
     return found_user.get("user_id")
 
 
