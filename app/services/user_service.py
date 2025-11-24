@@ -92,7 +92,7 @@ def find_user_id(email: str, question: str, answer: str) -> str:
     ):
         raise HTTPException(status_code=401, detail="본인 확인 정보가 일치하지 않습니다.")
 
-    return found_user.get("user_nickname")
+    return found_user.get("user_id")
 
 
 

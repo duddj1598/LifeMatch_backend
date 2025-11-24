@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
 @router.post("/signup")
 def signup(user: UserCreate):
     try:
+        print("recieved user data:", user)
         return create_user(user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -46,12 +47,12 @@ def login(id: str, password: str):
 )
 def api_find_user_id(request: FindIdRequest = Body(...)):
     try:
-        nickname = find_user_id(
+        user_id = find_user_id(
             email=request.user_email,
             question=request.security_question,
             answer=request.security_answer
         )
-        return FindIdResponse(status=200, user_nickname=nickname)
+        return FindIdResponse(status=200, user_id=user_id)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -60,7 +61,7 @@ def api_find_user_id(request: FindIdRequest = Body(...)):
 
 
 # 비밀번호 재설정
-@router.post(
+@router.put(
     "/reset-password",
     summary="비밀번호 재설정"
 )
