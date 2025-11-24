@@ -1,0 +1,7 @@
+#!/Users/kimjiwon/Desktop/3-2학기/SW/LifeMatch_backend/venv/bin/python
+import sys
+from rsa.cli import keygen
+if __name__ == '__main__':
+    if sys.argv[0].endswith('.exe'):
+        sys.argv[0] = sys.argv[0][:-4]
+    sys.exit(keygen())
