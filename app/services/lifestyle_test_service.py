@@ -42,10 +42,87 @@ TYPE_SCORING_MAP_COMPLEX = {
 # 질문 조회
 # -------------------------------------------------
 
-def get_test_questions():
-    """(생략) 기존 코드 그대로 유지"""
-    # ... 너의 mock_data 그대로 사용
-    from .mock_questions import mock_data   # 예시 파일 구조일 경우
+def get_test_questions() -> dict:
+    """
+    API 명세서의 예시 데이터를 기반으로 유형 검사 질문 목록을 반환합니다.
+    """
+    mock_data = {
+        "status": 200,
+        "data": {
+            "part1": [
+                {
+                    "question_id": 1,
+                    "question_text": "나의 소비 스타일은?",
+                    "options": [
+                        { "option_id": 1, "text": "새로운 경험을 위해서라면! 일단 결제하고 본다" }, # 트렌드세터, 아티스트
+                        { "option_id": 2, "text": "이걸 사는 게 맞을까? 가성비를 꼼꼼히 따져본다" }  # 실속파, 웰니스족
+                    ]
+                },
+                {
+                    "question_id": 2,
+                    "question_text": "더 끌리는 아이템은?",
+                    "options": [
+                        { "option_id": 3, "text": "최신 유행하는 신상 아이템" }, # 트렌드세터
+                        { "option_id": 4, "text": "오래 쓸 수 있는 클래식 아이템" } # 실속파
+                    ]
+                }
+            ],
+            "part2": [
+                {
+                    "question_id": 3,
+                    "question_text": "주말에 약속이 없다면?",
+                    "options": [
+                        { "option_id": 5, "text": "핫한 팝업스토어로 향한다" }, # 트렌드세터, 아티스트
+                        { "option_id": 6, "text": "밀린 드라마를 정주행하며 집콕한다" } # 힐링주의자
+                    ]
+                },
+                {
+                    "question_id": 4,
+                    "question_text": "여행을 떠난다면?",
+                    "options": [
+                        { "option_id": 7, "text": "SNS에 뜨는 명소 중심으로!" }, # 트렌드세터
+                        { "option_id": 8, "text": "나만 아는 조용한 곳으로!" } # 힐링주의자, 아티스트
+                    ]
+                }
+            ],
+            "part3": [
+                {
+                    "question_id": 5,
+                    "question_text": "오늘 운동 뭐 하지?",
+                    "options": [
+                        { "option_id": 9, "text": "인기 많은 피트니스 클래스를 찾아본다" }, # 트렌드세터, 웰니스족
+                        { "option_id": 10, "text": "상쾌하게 공원에서 조깅이나 할까" } # 힐링주의자, 웰니스족
+                    ]
+                },
+                {
+                    "question_id": 6,
+                    "question_text": "스트레스 받을 땐?",
+                    "options": [
+                        { "option_id": 11, "text": "매운 음식을 먹거나 쇼핑으로 푼다" }, # 트렌드세터, 실속파
+                        { "option_id": 12, "text": "명상을 하거나 좋아하는 음악을 듣는다" } # 웰니스족, 아티스트, 힐링주의자
+                    ]
+                }
+            ],
+            "part4": [
+                {
+                    "question_id": 7,
+                    "question_text": "새로운 기술이 나오면?",
+                    "options": [
+                        { "option_id": 13, "text": "일단 써봐야 직성이 풀린다" }, # 트렌드세터
+                        { "option_id": 14, "text": "안정성이 검증될 때까지 기다린다" } # 실속파, 힐링주의자
+                    ]
+                },
+                {
+                    "question_id": 8,
+                    "question_text": "안 쓰는 물건이 생기면?",
+                    "options": [
+                        { "option_id": 15, "text": "중고거래 앱에 바로 올린다" }, # 실속파
+                        { "option_id": 16, "text": "언젠가 쓸 것 같아 일단 둔다" } # 힐링주의자
+                    ]
+                }
+            ]
+        }
+    }
     return mock_data
 
 
