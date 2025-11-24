@@ -1,16 +1,24 @@
-from fastapi import APIRouter, Query, HTTPException
-from app.services.panel_service import search
+from fastapi import APIRouter, Depends, HTTPException
+from app.schemas.panel_schema import SearchRequest, SearchResponse
+from app.config.postgresql_config import get_db_conn, put_db_conn
+from app.services.panel_service import decompose_and_search
+from typing import Callable
 
-router = APIRouter(prefix="/api/panel", tags=["Panel"])
+router = APIRouter(prefix="/api/panel", tags=["panel"])
 
-@router.get("/search")
-def search_panel(query: str = Query(..., description="자연어 검색어 예: 러닝에 관심있는 20대")):
+def db_dependency():
+    conn = get_db_conn()
     try:
-        results = search(query)
-        return {
-            "status": 200,
-            "message": f"'{query}'에 해당하는 패널 {len(results)}명 검색됨",
-            "results": results
-        }
+        yield conn
+    finally:
+        put_db_conn(conn)
+
+@router.post("/search", response_model=SearchResponse)
+def search_panel(req: SearchRequest, conn = Depends(db_dependency)):
+    try:
+        result = decompose_and_search(req.query, conn)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"검색 중 오류 발생: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+    return SearchResponse(**result)
