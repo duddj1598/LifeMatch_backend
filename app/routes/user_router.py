@@ -59,7 +59,6 @@ def api_find_user_id(request: FindIdRequest = Body(...)):
         raise HTTPException(status_code=500, detail=f"서버 오류 발생: {str(e)}")
 
 
-
 # 비밀번호 재설정
 @router.put(
     "/reset-password",
