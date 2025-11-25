@@ -1,34 +1,63 @@
 from typing import List, Optional, Dict, Any
 import uuid
+import ast
 
+import numpy as np
 from google.cloud import firestore
 
 from app.config.firebase_config import db
 from app.schemas.group_schema import GroupCreate, GroupRead
 
+# 🔹 패널에서 쓰던 임베딩 모델 재활용
+from app.config.llm_config import get_embedding_model
+
 COLLECTION = "groups"
 DEFAULT_MAX_MEMBER = 10
 
 
+# -------------------------------------------------
+# 공통 유틸
+# -------------------------------------------------
 def _apply_client_side_defaults(data: Dict[str, Any]) -> Dict[str, Any]:
     if "max_member" not in data or data.get("max_member") is None:
         data["max_member"] = DEFAULT_MAX_MEMBER
     return data
 
 
+def _strip_timestamp(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Firestore의 created_at(Timestamp)을 응답에서 아예 제거.
+    FastAPI 응답에서 Timestamp를 다루기 귀찮으면 이렇게 빼버리면 됨.
+    """
+    data = dict(data)  # 원본 훼손 방지
+    data.pop("created_at", None)
+    return data
+
+
+def cosine_similarity(v1, v2) -> float:
+    v1 = np.array(v1)
+    v2 = np.array(v2)
+    denom = np.linalg.norm(v1) * np.linalg.norm(v2)
+    if denom == 0:
+        return 0.0
+    return float(np.dot(v1, v2) / denom)
+
+
 # -------------------------------------------------
 # 🔒 그룹 생성 (leader_id는 서버에서 세팅)
 # -------------------------------------------------
 def create_group(group: GroupCreate, leader_id: str) -> Dict[str, Any]:
-    # 프론트에서 넘어온 leader_id는 무시하고 서버 기준으로 덮어씀
-    payload = group.dict(exclude={"leader_id"})
+    payload = group.dict()
 
     if payload.get("max_member") is None:
         payload["max_member"] = DEFAULT_MAX_MEMBER
 
+    # 불필요한 None 제거
     payload = {k: v for k, v in payload.items() if v is not None}
 
+    # Firestore에는 created_at을 Timestamp로 계속 저장 (정렬용 등)
     payload["created_at"] = firestore.SERVER_TIMESTAMP
+
     chat_id = str(uuid.uuid4())
     payload["chat_id"] = chat_id
 
@@ -66,12 +95,11 @@ def get_group_by_id(group_id: str) -> Optional[GroupRead]:
 
         data = doc.to_dict()
         data = _apply_client_side_defaults(data)
-
-        if isinstance(data.get("created_at"), firestore.Timestamp):
-            data["created_at"] = data["created_at"].to_datetime().isoformat()
+        data = _strip_timestamp(data)  # 🔥 created_at 제거
 
         return GroupRead(id=doc.id, **data)
-    except Exception:
+    except Exception as e:
+        print(f"[get_group_by_id] error: {e}")
         return None
 
 
@@ -84,70 +112,138 @@ def get_all_groups() -> List[GroupRead]:
     for doc in docs:
         data = doc.to_dict()
         data = _apply_client_side_defaults(data)
-        if isinstance(data.get("created_at"), firestore.Timestamp):
-            data["created_at"] = data["created_at"].to_datetime().isoformat()
+        data = _strip_timestamp(data)  # 🔥 created_at 제거
         groups.append(GroupRead(id=doc.id, **data))
     return groups
 
 
 # -------------------------------------------------
-# 그룹 검색
+# 🔥 의미 기반(임베딩) 검색 로직
+# -------------------------------------------------
+def apply_semantic_search(docs, query: str) -> List[GroupRead]:
+    """
+    - docs: Firestore DocumentSnapshot 리스트
+    - query: 자연어 검색어
+    - 각 문서에는 'embedding' 필드가 있다고 가정 (1차원 리스트 또는 문자열)
+    """
+
+    try:
+        emb_model = get_embedding_model()
+    except Exception as e:
+        print(f"[apply_semantic_search] embedding model load failed: {e}")
+        return []
+
+    query_emb = emb_model.embed_query(query)
+    scored = []
+
+    for doc in docs:
+        data = doc.to_dict()
+        emb = data.get("embedding")
+
+        if emb is None:
+            continue
+
+        # If embedding is a string (stored incorrectly)
+        if isinstance(emb, str):
+            try:
+                emb = ast.literal_eval(emb)
+            except Exception:
+                continue
+
+        # If embedding is list inside list
+        if isinstance(emb, list) and len(emb) == 1 and isinstance(emb[0], list):
+            emb = emb[0]
+
+        # Ensure embedding is a 1D numeric list
+        if not isinstance(emb, list):
+            continue
+        if not all(isinstance(x, (int, float)) for x in emb):
+            continue
+
+        # Compute similarity
+        try:
+            score = cosine_similarity(query_emb, emb)
+        except Exception:
+            continue
+
+        data = _apply_client_side_defaults(data)
+        data = _strip_timestamp(data)  # 🔥 created_at 제거
+
+        scored.append({
+            "doc_id": doc.id,
+            "score": score,
+            "data": data,
+        })
+
+    # Sort by score
+    scored.sort(key=lambda x: x["score"], reverse=True)
+
+    return [
+        GroupRead(id=item["doc_id"], **item["data"])
+        for item in scored
+    ]
+
+
+# -------------------------------------------------
+# 🔍 그룹 검색 (자연어 + 카테고리만)
 # -------------------------------------------------
 def search_groups(
-    group_name: Optional[str] = None,
+    query: Optional[str] = None,
     category: Optional[str] = None,
-    min_member: Optional[int] = None,
-    max_member: Optional[int] = None,
-    created_after: Optional[Any] = None,
-    created_before: Optional[Any] = None,
-    sort_by: str = "created_at",
-    desc: bool = True,
-    limit: int = 50,
-    offset: int = 0,
 ) -> List[GroupRead]:
     try:
+        print("\n" * 2, "---------------------------------")
+        print(f"[search_groups] query: {query}, category: {category}")
         coll_ref = db.collection(COLLECTION)
-        query = coll_ref
+        q_ref = coll_ref
 
+        # 1) 카테고리 필터
         if category:
-            query = query.where("category", "==", category)
-        if min_member is not None:
-            query = query.where("max_member", ">=", min_member)
-        if max_member is not None:
-            query = query.where("max_member", "<=", max_member)
-        if created_after is not None:
-            query = query.where("created_at", ">", created_after)
-        if created_before is not None:
-            query = query.where("created_at", "<", created_before)
+            q_ref = q_ref.where("category", "==", category)
+            print("[search_groups] category filter applied")
 
-        direction = firestore.Query.DESCENDING if desc else firestore.Query.ASCENDING
-        query = query.order_by(sort_by, direction=direction)
+        docs = list(q_ref.stream())
+        print(f"[search_groups] fetched docs: {len(docs)}")
 
-        docs = list(query.stream())
-        results: List[GroupRead] = []
+        # 2) 자연어 쿼리가 없으면 그냥 전체 반환
+        if not query:
+            results: List[GroupRead] = []
+            print("--start appending docs without semantic search--")
+            for doc in docs:
+                data = doc.to_dict()
+                data = _apply_client_side_defaults(data)
+                data = _strip_timestamp(data)  # 🔥 created_at 제거
+                results.append(GroupRead(id=doc.id, **data))
+            print(f"[search_groups] result(no query): {len(results)} groups")
+            return results
+
+        print("[search_groups] applying semantic search")
+
+        # 3) 자연어 쿼리가 있으면 의미 기반 검색 적용
+        semantic_results = apply_semantic_search(docs, query)
+        print(f"[search_groups] semantic results: {len(semantic_results)} groups")
+
+        # 임베딩 없는 문서 중에서도, 이름 매칭되는 것 있으면 뒤에 추가
+        used_ids = {g.id for g in semantic_results}
+        fallback_results: List[GroupRead] = []
 
         for doc in docs:
+            if doc.id in used_ids:
+                continue
+
             data = doc.to_dict()
-            data = _apply_client_side_defaults(data)
+            name = data.get("group_name", "")
+            if query.lower() in str(name).lower():
+                data = _apply_client_side_defaults(data)
+                data = _strip_timestamp(data)  # 🔥 created_at 제거
+                fallback_results.append(GroupRead(id=doc.id, **data))
 
-            if group_name:
-                if not isinstance(data.get("group_name"), str):
-                    continue
-                if group_name.lower() not in data["group_name"].lower():
-                    continue
+        print(f"[search_groups] fallback results: {len(fallback_results)} groups")
 
-            if min_member is not None and data.get("max_member", DEFAULT_MAX_MEMBER) < min_member:
-                continue
-            if max_member is not None and data.get("max_member", DEFAULT_MAX_MEMBER) > max_member:
-                continue
+        return semantic_results + fallback_results
 
-            if isinstance(data.get("created_at"), firestore.Timestamp):
-                data["created_at"] = data["created_at"].to_datetime().isoformat()
-
-            results.append(GroupRead(id=doc.id, **data))
-
-        return results[offset: offset + limit]
-    except Exception:
+    except Exception as e:
+        print(f"[search_groups] error: {e}")
         return []
 
 
@@ -156,7 +252,7 @@ def search_groups(
 # -------------------------------------------------
 def _add_member_to_group(group_id: str, user_id: str) -> bool:
     """
-    group_actions → notification_service 에서 호출  
+    notification_service 등에서 호출  
     user_id는 Firestore users 문서 ID
     """
     try:
