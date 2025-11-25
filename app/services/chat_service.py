@@ -236,15 +236,11 @@ def create_chat_room(req: ChatRoomCreateRequest, current_user_id: str):
         # 🔥 1) target_login_id → Firestore 문서 조회
         # ============================================
         query = db.collection("users").where("user_id", "==", target_login_id).limit(1).stream()
-        target_user_doc = None
-        for doc in query:
-            target_user_doc = doc
-            break
 
-        if not target_user_doc:
+        if not target_login_id:
             raise HTTPException(status_code=404, detail="해당 유저를 찾을 수 없습니다.")
 
-        target_doc_id = target_user_doc.id
+        target_doc_id = target_login_id
 
         # ============================================
         # 🔥 2) 자기 자신 DM 생성 방지 (user_id 기준)
