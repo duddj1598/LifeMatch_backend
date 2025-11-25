@@ -101,7 +101,7 @@ def reset_password(login_id: str, email: str, question: str, answer: str, new_pa
     users_ref = db.collection("users")
 
     query_email = users_ref.where("user_email", "==", login_id).stream()
-    query_nick = users_ref.where("user_nickname", "==", login_id).stream()
+    query_nick = users_ref.where("user_id", "==", login_id).stream()
 
     found_doc = None
     found_user = None
