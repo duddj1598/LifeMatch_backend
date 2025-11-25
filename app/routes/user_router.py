@@ -1,16 +1,19 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
 from app.schemas.user_schema import (
     UserCreate,
     FindIdRequest,
     FindIdResponse,
-    ResetPasswordRequest
+    ResetPasswordRequest,
 )
 from app.services.user_service import (
     create_user,
     login_user,
     find_user_id,
-    reset_password
+    reset_password,
+    get_managed_groups,
+    get_joined_groups
 )
+from app.middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -78,3 +81,26 @@ def api_reset_password(request: ResetPasswordRequest = Body(...)):
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"서버 오류 발생: {str(e)}")
+
+# -------------------------------------------------
+# 🔥 내가 리더인 소모임 목록 조회
+# -------------------------------------------------
+@router.get("/managed")
+def my_managed_groups(current_user: dict = Depends(get_current_user)):
+    try:
+        user_doc_id = current_user["user_doc_id"]
+        return get_managed_groups(user_doc_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------------------------------------
+# 🔥 내가 참여 중인 소모임 목록 조회
+# -------------------------------------------------
+@router.get("/joined")
+def my_joined_groups(current_user: dict = Depends(get_current_user)):
+    try:
+        user_doc_id = current_user["user_doc_id"]
+        return get_joined_groups(user_doc_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
