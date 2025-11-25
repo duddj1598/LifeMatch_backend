@@ -163,14 +163,12 @@ def decompose_and_search(query: str, conn):
             panel_response_sample = {}
 
     embedding_matched_ids = find_matching_panel_ids(embedding_results, conn, panel_response_sample)
-    logging.info(f"embedding_matched_ids: {embedding_matched_ids}")
+    logging.info(f"panel_demographic_count: {len(panel_demographic_ids)}")
+    logging.info(f"embedding_matched_count: {len(embedding_matched_ids)}")
 
     final_ids = list(set(panel_demographic_ids) & set(embedding_matched_ids))
     logging.info(f"final_ids: {final_ids}")
     elapsed = time.time() - start
-    return {
-        "final_ids": final_ids,
-        "panel_demographic_count": len(panel_demographic_ids),
-        "embedding_matched_count": len(embedding_matched_ids),
-        "elapsed_seconds": round(elapsed, 3)
-    }
+    logging.info(f"search elapsed time: {elapsed} seconds")
+
+    return {"id": final_ids}

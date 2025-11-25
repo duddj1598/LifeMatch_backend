@@ -5,7 +5,9 @@ from app.routes import (
     )
 from app.config.postgresql_config import init_db_pool
 from app.config.llm_config import get_embedding_model, get_chroma_db, get_llm_client
+import logging
 
+logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="LifeMatch Backend")
 
 app.include_router(user_router.router)
