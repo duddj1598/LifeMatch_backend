@@ -132,3 +132,66 @@ def reset_password(login_id: str, email: str, question: str, answer: str, new_pa
     })
 
     return True
+
+def get_managed_groups(user_doc_id: str):
+    """
+    내가 리더인 그룹 조회 (leader_id == user_doc_id)
+    """
+    try:
+        group_ref = db.collection("groups").where(
+            "leader_id", "==", user_doc_id
+        ).stream()
+
+        groups = []
+        for doc in group_ref:
+            data = doc.to_dict()
+            groups.append({
+                "group_id": doc.id,
+                "group_name": data.get("group_name"),
+                "category": data.get("category"),
+                "current_member": data.get("current_member", 0),
+                "max_member": data.get("max_member", 10),
+                "description": data.get("description"),
+                "group_image": data.get("group_image"),
+            })
+
+        return {
+            "status": 200,
+            "groups": groups
+        }
+
+    except Exception as e:
+        print("[get_managed_groups]", e)
+        raise HTTPException(status_code=500, detail="관리 소모임 조회 오류")
+
+
+def get_joined_groups(user_doc_id: str):
+    """
+    내가 참여한 그룹 조회 (members 배열에 포함)
+    """
+    try:
+        group_ref = db.collection("groups").where(
+            "members", "array_contains", user_doc_id
+        ).stream()
+
+        groups = []
+        for doc in group_ref:
+            data = doc.to_dict()
+            groups.append({
+                "group_id": doc.id,
+                "group_name": data.get("group_name"),
+                "category": data.get("category"),
+                "current_member": data.get("current_member", 0),
+                "max_member": data.get("max_member", 10),
+                "description": data.get("description"),
+                "group_image": data.get("group_image"),
+            })
+
+        return {
+            "status": 200,
+            "groups": groups
+        }
+
+    except Exception as e:
+        print("[get_joined_groups]", e)
+        raise HTTPException(status_code=500, detail="참여 소모임 조회 오류")
