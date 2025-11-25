@@ -8,32 +8,66 @@ from app.config.firebase_config import db
 from app.schemas.chat_schema import ChatMessageCreate, ChatRoomCreateRequest
 
 
-# -------------------------------------------------
-# 🔥 채팅방 목록 조회
-# -------------------------------------------------
 def get_chat_list(user_doc_id: str):
-    """
-    Firestore:
-    - groups 컬렉션에서 members 배열에 user_doc_id가 포함된 문서들 조회
-    """
+    chat_list = []
+
+    # ===============================================
+    # 🔥 1) 그룹 채팅 목록
+    # ===============================================
     groups_ref = db.collection("groups").where(
         "members", "array_contains", user_doc_id
     ).stream()
 
-    chat_list = []
     for group_doc in groups_ref:
-        group_data = group_doc.to_dict()
+        data = group_doc.to_dict()
         chat_list.append({
-            "chat_id": group_doc.id,  # 프론트에서 이걸 chat_id로 사용하면 됨
-            "group_name": group_data.get("group_name", "모임 이름 없음"),
-            "category": group_data.get("category", "기타"),
-            "current_member": group_data.get("current_member", 0),
+            "chat_id": group_doc.id,
+            "type": "group",
+            "name": data.get("group_name", "모임 이름 없음"),
+            "category": data.get("category", "기타"),
+            "current_member": data.get("current_member", 0),
+        })
+
+    # ===============================================
+    # 🔥 2) DM 채팅 목록 (상대방 닉네임 포함)
+    # chat_rooms 컬렉션에서 type == "dm" AND members contains user
+    # ===============================================
+    dm_ref = db.collection("chat_rooms")\
+        .where("type", "==", "dm")\
+        .where("members", "array_contains", user_doc_id)\
+        .stream()
+
+    for dm_doc in dm_ref:
+        data = dm_doc.to_dict()
+        members = data.get("members", [])
+
+        # 🔥 본인 제외: 상대방 user_id
+        other_user_id = [m for m in members if m != user_doc_id]
+        print(f"DM 상대방 ID 리스트: {other_user_id}")
+        other_user_id = other_user_id[0] if other_user_id else None
+        print(f"DM 상대방 ID: {other_user_id}")
+
+        other_nickname = "알 수 없음"
+
+        if other_user_id:
+            user_doc = db.collection("users").document(other_user_id).get()
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            other_nickname = user_data.get("user_nickname", "닉네임 없음")
+
+        chat_list.append({
+            "chat_id": dm_doc.id,
+            "type": "dm",
+            "name": other_nickname,        # 🔥 DM 상대방 닉네임으로 표시
+            "members": members,
+            "created_at": data.get("created_at"),
         })
 
     return {
         "status": 200,
         "list": chat_list,
     }
+
 
 
 # -------------------------------------------------
@@ -146,7 +180,7 @@ def _generate_dm_key(u1: str, u2: str) -> str:
     return "|".join(sorted([u1, u2]))
 
 
-def create_chat_room(req: ChatRoomCreateRequest, current_user: dict):
+def create_chat_room(req: ChatRoomCreateRequest, current_user_id: str):
     """
     채팅방 생성:
     - type == "group": 이미 존재하는 그룹 채팅 정보 반환
@@ -156,9 +190,9 @@ def create_chat_room(req: ChatRoomCreateRequest, current_user: dict):
     chat_type = req.type
 
     # 🔹 JWT에서 현재 유저 ID 가져오기 (user_id 우선, 없으면 user_doc_id 사용)
-    current_user_id = current_user.get("user_id") or current_user.get("user_doc_id")
     if not current_user_id:
         raise HTTPException(status_code=500, detail="현재 사용자 ID를 찾을 수 없습니다.")
+    print(f"현재 사용자 ID: {current_user_id}") 
 
     # ============================================
     # 🔥 1) 그룹 채팅 (group)
@@ -189,22 +223,42 @@ def create_chat_room(req: ChatRoomCreateRequest, current_user: dict):
     # 🔥 2) DM 채팅 (dm)
     # ============================================
     elif chat_type == "dm":
-        # DM은 프론트에서 target_ids에 "상대 user_id" 1개만 보내도록 설계
+        # DM은 target_ids에 상대 user_id 1개만 포함
         if not req.target_ids or len(req.target_ids) != 1:
             raise HTTPException(
                 status_code=400,
                 detail="DM 생성 시 target_ids에는 상대 user_id 1개만 포함해야 합니다.",
             )
 
-        target_user_id = req.target_ids[0]
+        target_login_id = req.target_ids[0]
 
-        if target_user_id == current_user_id:
+        # ============================================
+        # 🔥 1) target_login_id → Firestore 문서 조회
+        # ============================================
+        query = db.collection("users").where("user_id", "==", target_login_id).limit(1).stream()
+        target_user_doc = None
+        for doc in query:
+            target_user_doc = doc
+            break
+
+        if not target_user_doc:
+            raise HTTPException(status_code=404, detail="해당 유저를 찾을 수 없습니다.")
+
+        target_doc_id = target_user_doc.id
+
+        # ============================================
+        # 🔥 2) 자기 자신 DM 생성 방지 (user_id 기준)
+        # ============================================
+        if target_doc_id == current_user_id:
             raise HTTPException(status_code=400, detail="자기 자신과 DM은 생성할 수 없습니다.")
 
-        # 🔑 user_id 2개로 dm_key 생성
-        dm_key = _generate_dm_key(current_user_id, target_user_id)
+        # ============================================
+        # 🔥 3) DM 키 생성 (문서 ID 기준)
+        # ============================================
+        current_doc_id = current_user_id
+        dm_key = _generate_dm_key(current_doc_id, target_doc_id)
 
-        # 이미 존재하는 DM 채팅방 있는지 확인
+        # 기존 DM 존재 확인
         existing_doc = db.collection("chat_rooms").document(dm_key).get()
         if existing_doc.exists:
             data = existing_doc.to_dict()
@@ -215,12 +269,12 @@ def create_chat_room(req: ChatRoomCreateRequest, current_user: dict):
                 "message": "이미 존재하는 DM 채팅방을 반환합니다.",
             }
 
-        # 없으면 새로 생성
+        # 새 방 생성
         new_room = {
             "chat_id": dm_key,
             "type": "dm",
             "dm_key": dm_key,
-            "members": [current_user_id, target_user_id],  # 🔥 user_id 기준
+            "members": [current_doc_id, target_doc_id],
             "created_at": datetime.utcnow(),
         }
         db.collection("chat_rooms").document(dm_key).set(new_room)
@@ -228,9 +282,10 @@ def create_chat_room(req: ChatRoomCreateRequest, current_user: dict):
         return {
             "status": 201,
             "chat_id": dm_key,
-            "members": [current_user_id, target_user_id],
+            "members": [current_doc_id, target_doc_id],
             "message": "새로운 DM 채팅방이 생성되었습니다.",
         }
+
 
     # ============================================
     # 🔥 잘못된 type 처리
