@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from google.cloud import firestore
 
 from app.config.firebase_config import db
-from app.schemas.chat_schema import ChatMessageCreate
+from app.schemas.chat_schema import ChatMessageCreate, ChatRoomCreateRequest
 
 
 # -------------------------------------------------
@@ -140,3 +140,100 @@ def get_chat_history(
         "messages": messages,
         "next_message_id": next_message_id,
     }
+
+def _generate_dm_key(u1: str, u2: str) -> str:
+    """DM 고유 키: user_id 두 개를 정렬해서 묶음"""
+    return "|".join(sorted([u1, u2]))
+
+
+def create_chat_room(req: ChatRoomCreateRequest, current_user: dict):
+    """
+    채팅방 생성:
+    - type == "group": 이미 존재하는 그룹 채팅 정보 반환
+    - type == "dm": 나(current_user) + 상대(target_ids[0]) DM 생성 (또는 기존 것 반환)
+    """
+
+    chat_type = req.type
+
+    # 🔹 JWT에서 현재 유저 ID 가져오기 (user_id 우선, 없으면 user_doc_id 사용)
+    current_user_id = current_user.get("user_id") or current_user.get("user_doc_id")
+    if not current_user_id:
+        raise HTTPException(status_code=500, detail="현재 사용자 ID를 찾을 수 없습니다.")
+
+    # ============================================
+    # 🔥 1) 그룹 채팅 (group)
+    # ============================================
+    if chat_type == "group":
+        if not req.group_id:
+            raise HTTPException(status_code=400, detail="group_id가 필요합니다.")
+
+        group_ref = db.collection("groups").document(req.group_id)
+        group_doc = group_ref.get()
+
+        if not group_doc.exists:
+            raise HTTPException(status_code=404, detail="그룹이 존재하지 않습니다.")
+
+        group_data = group_doc.to_dict()
+        members = group_data.get("members", [])
+
+        # 그룹 채팅은 이미 groups 컬렉션 기준으로 존재한다고 보고,
+        # 그냥 정보만 반환
+        return {
+            "status": 200,
+            "chat_id": req.group_id,   # 그룹 채팅은 group_id = chat_id
+            "members": members,
+            "message": "그룹 채팅방 정보입니다.",
+        }
+
+    # ============================================
+    # 🔥 2) DM 채팅 (dm)
+    # ============================================
+    elif chat_type == "dm":
+        # DM은 프론트에서 target_ids에 "상대 user_id" 1개만 보내도록 설계
+        if not req.target_ids or len(req.target_ids) != 1:
+            raise HTTPException(
+                status_code=400,
+                detail="DM 생성 시 target_ids에는 상대 user_id 1개만 포함해야 합니다.",
+            )
+
+        target_user_id = req.target_ids[0]
+
+        if target_user_id == current_user_id:
+            raise HTTPException(status_code=400, detail="자기 자신과 DM은 생성할 수 없습니다.")
+
+        # 🔑 user_id 2개로 dm_key 생성
+        dm_key = _generate_dm_key(current_user_id, target_user_id)
+
+        # 이미 존재하는 DM 채팅방 있는지 확인
+        existing_doc = db.collection("chat_rooms").document(dm_key).get()
+        if existing_doc.exists:
+            data = existing_doc.to_dict()
+            return {
+                "status": 200,
+                "chat_id": data["chat_id"],
+                "members": data["members"],
+                "message": "이미 존재하는 DM 채팅방을 반환합니다.",
+            }
+
+        # 없으면 새로 생성
+        new_room = {
+            "chat_id": dm_key,
+            "type": "dm",
+            "dm_key": dm_key,
+            "members": [current_user_id, target_user_id],  # 🔥 user_id 기준
+            "created_at": datetime.utcnow(),
+        }
+        db.collection("chat_rooms").document(dm_key).set(new_room)
+
+        return {
+            "status": 201,
+            "chat_id": dm_key,
+            "members": [current_user_id, target_user_id],
+            "message": "새로운 DM 채팅방이 생성되었습니다.",
+        }
+
+    # ============================================
+    # 🔥 잘못된 type 처리
+    # ============================================
+    else:
+        raise HTTPException(status_code=400, detail="type은 group 또는 dm 이어야 합니다.")
