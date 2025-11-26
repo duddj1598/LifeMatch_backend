@@ -113,7 +113,6 @@ def login_user(id: str, password: str):
     }
 >>>>>>> main
 
-
 def login_user(login_id: str, password: str):
     users_ref = db.collection("users")
 
