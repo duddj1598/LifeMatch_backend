@@ -11,7 +11,7 @@ class UserCreate(BaseModel):
 
 '''추가됨'''
 class FindIdRequest(BaseModel):
-    user_email: EmailStr
+    user_nickname: str
     security_question: str
     security_answer: str
 
@@ -21,7 +21,6 @@ class FindIdResponse(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     login_id: str
-    user_email: EmailStr
     security_question: str
     security_answer: str
     new_password: str

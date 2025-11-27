@@ -44,74 +44,6 @@ def create_user(user: UserCreate):
     user_data = user.dict()
     user_data["created_at"] = datetime.utcnow()
 
-<<<<<<< HEAD
-def login_user(id: str, password: str):
-    users_ref = db.collection("users")
-
-    # 이메일 또는 닉네임으로 문서 검색
-    query_email = users_ref.where("user_email", "==", id).stream()
-    query_nick = users_ref.where("user_nickname", "==", id).stream()
-
-    found_user = None
-    user_doc_id = None
-
-    # 이메일로 먼저 찾기
-    for doc in query_email:
-        found_user = doc.to_dict()
-        user_doc_id = doc.id
-        break
-
-    # 이메일로 못 찾으면 닉네임으로 찾기
-    if not found_user:
-        for doc in query_nick:
-            found_user = doc.to_dict()
-            user_doc_id = doc.id
-            break
-
-    if not found_user:
-        raise HTTPException(status_code=404, detail="존재하지 않는 유저입니다.")
-
-    # 설문 검사 여부
-    survey_response = found_user.get("user_survey_response")
-    has_completed_survey = survey_response is not None and len(survey_response) > 0
-
-    # 비밀번호 체크
-    if found_user["user_password"] != password:
-        raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다.")
-
-    # JWT 생성
-    payload = {
-        "sub": id,
-        "exp": datetime.utcnow() + timedelta(hours=12),
-        "nickname": found_user.get("user_nickname"),
-    }
-    access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
-    return {
-        "status": 200,
-        "accessToken": access_token,
-        "nickname": found_user.get("user_nickname"),
-        "hasCompletedSurvey": has_completed_survey,
-        "user_id": user_doc_id   # 🔥🔥 이게 핵심
-    }
-
-    """
-    유저 로그인 검증 (프론트에서 이미 암호화된 비밀번호를 보냄)
-    """
-    users_ref = db.collection("users")
-    # id로 이메일 또는 닉네임 검색
-    query_email = users_ref.where("user_email", "==", id).stream()
-    query_nick = users_ref.where("user_nickname", "==", id).stream()
-=======
-    user_ref = db.collection("users").document()
-    user_ref.set(user_data)
-
-    return {
-        "status": 201,
-        "message": "회원가입 성공",
-        "user_id": user_ref.id
-    }
->>>>>>> main
 
 
 def login_user(login_id: str, password: str):
@@ -163,9 +95,9 @@ def login_user(login_id: str, password: str):
     }
 
 
-def find_user_id(email: str, question: str, answer: str) -> str:
+def find_user_id(nickname: str, question: str, answer: str) -> str:
     users_ref = db.collection("users")
-    query_ref = users_ref.where(filter=FieldFilter('user_email', '==', email))
+    query_ref = users_ref.where(filter=FieldFilter('user_nickname', '==', nickname))
     
     found_user = None
     query = query_ref.get()
@@ -184,41 +116,38 @@ def find_user_id(email: str, question: str, answer: str) -> str:
     return found_user.get("user_id")
 
 
-def reset_password(login_id: str, email: str, question: str, answer: str, new_password: str):
+def reset_password(login_id: str, question: str, answer: str, new_password: str):
     users_ref = db.collection("users")
 
-    query_email = users_ref.where("user_email", "==", login_id).stream()
-    query_nick = users_ref.where("user_id", "==", login_id).stream()
+    # 🔍 1) login_id(user_id)로만 사용자 검색
+    query = users_ref.where("user_id", "==", login_id).stream()
 
     found_doc = None
     found_user = None
 
-    for doc in query_email:
+    for doc in query:
         found_doc = doc
         found_user = doc.to_dict()
         break
 
-    if not found_doc:
-        for doc in query_nick:
-            found_doc = doc
-            found_user = doc.to_dict()
-            break
-
+    # ❌ 사용자 없음
     if not found_doc:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
 
-    if (
-        found_user.get("user_email") != email or
-        found_user.get("user_security_question") != question or
-        found_user.get("user_security_answer") != answer
-    ):
-        raise HTTPException(status_code=401, detail="본인 확인 정보가 일치하지 않습니다.")
+    # 🔍 2) 본인 인증 질문/답변 검증
+    if found_user.get("user_security_question") != question:
+        raise HTTPException(status_code=401, detail="본인 확인 질문이 일치하지 않습니다.")
 
+    if found_user.get("user_security_answer") != answer:
+        raise HTTPException(status_code=401, detail="본인 확인 답변이 일치하지 않습니다.")
+
+    # 🔥 3) 비밀번호 업데이트
     db.collection("users").document(found_doc.id).update({
         "user_password": new_password
     })
 
     return True
+
 
 
 def get_managed_groups(user_doc_id: str):

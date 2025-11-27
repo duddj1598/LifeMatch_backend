@@ -78,11 +78,12 @@ def login(id: str, password: str):
 def api_find_user_id(request: FindIdRequest = Body(...)):
     try:
         user_id = find_user_id(
-            email=request.user_email,
+            nickname=request.user_nickname,
             question=request.security_question,
             answer=request.security_answer
         )
         return FindIdResponse(status=200, user_id=user_id)
+
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -98,7 +99,6 @@ def api_reset_password(request: ResetPasswordRequest = Body(...)):
     try:
         reset_password(
             login_id=request.login_id,
-            email=request.user_email,
             question=request.security_question,
             answer=request.security_answer,
             new_password=request.new_password

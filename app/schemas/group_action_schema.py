@@ -2,6 +2,7 @@ from pydantic import BaseModel
 
 class GroupInviteRequest(BaseModel):
     group_id: str
+    user_id: str
 
 class GroupInviteResponse(BaseModel):
     status: int
