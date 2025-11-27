@@ -1,15 +1,258 @@
-def search(query: str):
-    return [
+import time
+import json
+import ast
+import random
+from typing import List, Optional
+import numpy as np
+import logging
+
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+
+from app.config.llm_config import get_embedding_model, get_chroma_db, get_llm_client
+from app.schemas.panel_schema import QueryOutputSchema
+from app.config.firebase_config import db  # Firestore 사용
+
+
+# 🔥 카테고리 → 라이프스타일 매핑표
+CATEGORY_TO_LIFESTYLE = {
+    "생활습관·건강": ["자기관리형 웰니스족"],
+    "기술": ["디지털 트렌드세터"],
+    "소비·경제": ["알뜰살뜰 실속파"],
+    "여가·문화": ["감성 충만 아티스트", "소박한 힐링주의자"],
+}
+
+
+def cosine_similarity(vec1, vec2):
+    vec1 = np.array(vec1)
+    vec2 = np.array(vec2)
+    denom = (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+    if denom == 0:
+        return 0.0
+    return float(np.dot(vec1, vec2) / denom)
+
+
+def LLM_Decomposer(prompt: str) -> QueryOutputSchema:
+    chroma = get_chroma_db()
+    LLM = get_llm_client()
+
+    chain = (
         {
-            "nickname": "홍길동",
-            "age": 25,
-            "interests": ["러닝", "운동"],
-            "match_score": 0.91
-        },
-        {
-            "nickname": "김영희",
-            "age": 28,
-            "interests": ["요가", "명상"],
-            "match_score": 0.87
+            "context": chroma.as_retriever() | (lambda docs: "\n\n".join([doc.page_content for doc in docs])),
+            "question": RunnablePassthrough(),
         }
-    ]
+        | PromptTemplate(
+            input_variables=["question", "context"],
+            template="""
+                아래 참고 문서를 기반으로 질문에 대해
+                1. panel_demographic 테이블에서 검색 가능한 조건은 SQL로 생성하고,
+                2. panel_demographic에서 검색할 수 없는 조건(비정형/자유응답 등)은 임베딩 기반 의미검색용 문장으로 생성하세요.
+
+                질문:
+                {question}
+
+                참고 문서:
+                {context}
+
+                [출력은 반드시 JSON 스키마에 맞추세요.]
+            """
+        )
+        | LLM.with_structured_output(QueryOutputSchema)
+    )
+
+    return chain.invoke(prompt)
+
+
+# --------------------------------------------------------
+# 🔥 Firestore에서 category 기반 유저 1명 추천
+# --------------------------------------------------------
+def pick_user_by_category(category: Optional[str]) -> Optional[dict]:
+    """
+    category -> lifestyle -> 해당 lifestyle 유저 랜덤 1명
+    없으면 전체 users에서 랜덤 1명
+    """
+    # 1) lifestyle 매핑이 가능한 경우
+    if category and category in CATEGORY_TO_LIFESTYLE:
+        lifestyle_candidates = CATEGORY_TO_LIFESTYLE[category]
+        chosen_life = random.choice(lifestyle_candidates)
+
+        matched_users = list(
+            db.collection("users")
+            .where("user_lifestyle_type", "==", chosen_life)
+            .stream()
+        )
+
+        if matched_users:
+            user_doc = random.choice(matched_users)
+            return {"id": user_doc.id, **user_doc.to_dict()}
+
+    # 2) fallback: 전체 유저
+    all_users = list(db.collection("users").stream())
+    if not all_users:
+        return None
+
+    user_doc = random.choice(all_users)
+    return {"id": user_doc.id, **user_doc.to_dict()}
+
+
+# --------------------------------------------------------
+# 🔥 임베딩 검색
+# --------------------------------------------------------
+def embedding_search(queries_to_embedding: List[str], conn) -> List[dict]:
+    emb_model = get_embedding_model()
+    results = []
+
+    for query in queries_to_embedding:
+        query_emb = emb_model.embed_query(query)
+        vector_str = "[" + ",".join(str(x) for x in query_emb) + "]"
+
+        # 1) question_embeddings에서 유사도 검색
+        with conn.cursor() as cur:
+            try:
+                cur.execute("""
+                    SELECT DISTINCT ON (question_id) question_id, choice_text, question_embedding
+                    FROM question_embeddings
+                    ORDER BY question_id, question_embedding <-> %s::vector
+                    LIMIT 3
+                """, (vector_str,))
+                first_results = cur.fetchall()
+            except Exception:
+                conn.rollback()
+                first_results = []
+
+        if not first_results:
+            continue
+
+        question_ids = [row[0] for row in first_results]
+
+        # 2) summary_embedding 가져오기
+        with conn.cursor() as cur:
+            try:
+                cur.execute("""
+                    SELECT question_id, question_text, choice_text, summary_embedding
+                    FROM question_embeddings
+                    WHERE question_id = ANY(%s)
+                """, (question_ids,))
+                summary_rows = cur.fetchall()
+            except Exception:
+                conn.rollback()
+                continue
+
+        scored = []
+        for qid, _, choice_text, summary_emb in summary_rows:
+            if isinstance(summary_emb, str):
+                try:
+                    summary_emb = ast.literal_eval(summary_emb)
+                except:
+                    continue
+            if summary_emb is None:
+                continue
+
+            score = cosine_similarity(query_emb, summary_emb)
+            scored.append({
+                "query": query,
+                "question_id": qid,
+                "choice_text": choice_text,
+                "score": score
+            })
+
+        if scored:
+            best = max(scored, key=lambda x: x["score"])
+            results.append(best)
+
+    return results
+
+
+# --------------------------------------------------------
+# 🔥 panel_response에서 임베딩 결과에 해당하는 패널 찾기
+# --------------------------------------------------------
+def find_matching_panel_ids(embedding_results_json: List[dict], conn, panel_response_sample: Optional[dict] = None):
+    matched_ids = set()
+
+    for result in embedding_results_json:
+        question_id = result["question_id"]
+        choice_text = result["choice_text"]
+
+        with conn.cursor() as cur:
+            try:
+                cur.execute(f"""
+                    SELECT id FROM panel_response
+                    WHERE "{question_id}" IS NOT NULL
+                    AND "{question_id}"::jsonb @> %s::jsonb
+                """, (json.dumps([choice_text]),))
+            except Exception:
+                conn.rollback()
+                try:
+                    cur.execute(f"""
+                        SELECT id FROM panel_response
+                        WHERE "{question_id}" = %s
+                    """, (choice_text,))
+                except Exception:
+                    conn.rollback()
+                    continue
+
+            rows = cur.fetchall()
+            for row in rows:
+                matched_ids.add(row[0])
+
+    return list(matched_ids)
+
+
+# --------------------------------------------------------
+# 🔥 메인 로직: category 포함 패널 검색
+# --------------------------------------------------------
+def decompose_and_search(query: str, category: Optional[str], conn):
+    start = time.time()
+
+    # 1) LLM으로 쿼리 분해
+    llm_out = LLM_Decomposer(query)
+    sql_query = llm_out.sql
+    queries_to_embedding = llm_out.queries_to_embedding
+
+    # 2) Firestore에서 category 기반 user 추천
+    matched_user = pick_user_by_category(category)
+    recommended_user_id = None
+    if matched_user:
+        recommended_user_id = matched_user.get("user_id") or matched_user["id"]
+        logging.info(f"[panel] selected user = {recommended_user_id}")
+
+    # 3) SQL 실행
+    with conn.cursor() as cur:
+        try:
+            cur.execute(sql_query)
+            demographic_ids = [r[0] for r in cur.fetchall()]
+        except Exception as e:
+            conn.rollback()
+            raise e
+
+    # 4) 임베딩 검색
+    embedding_results = embedding_search(queries_to_embedding, conn)
+
+    # 5) panel_response 샘플
+    panel_response_sample = {}
+    with conn.cursor() as cur:
+        try:
+            cur.execute("SELECT * FROM panel_response LIMIT 1")
+            row = cur.fetchone()
+            if row:
+                colnames = [desc[0] for desc in cur.description]
+                panel_response_sample = dict(zip(colnames, row))
+        except Exception:
+            pass
+
+    # 6) panel_response 매칭
+    embedding_matched_ids = find_matching_panel_ids(
+        embedding_results, conn, panel_response_sample
+    )
+
+    # 7) 두 조건 교집합
+    final_ids = list(set(demographic_ids) & set(embedding_matched_ids))
+
+    # 8) 유저 추천 아이디를 맨 앞에 추가
+    if recommended_user_id:
+        final_ids = [recommended_user_id] + final_ids
+
+    logging.info(f"[panel] final_ids: {final_ids}")
+    logging.info(f"elapsed: {time.time() - start}s")
+
+    return {"id": final_ids}
