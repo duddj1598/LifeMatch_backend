@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 class ChatRoom(BaseModel):
     group_name: str
@@ -38,3 +38,14 @@ class ChatMessageResponse(BaseModel):
 class ChatHistoryResponse(BaseModel):
     messages: List[ChatMessage]
     next_message_id: Optional[int]
+
+class ChatRoomCreateRequest(BaseModel):
+    type: Literal["group", "dm"]     # "group" 또는 "dm"
+    group_id: Optional[str] = None   # 그룹 채팅일 때만 사용
+    target_ids: Optional[List[str]] = None  # DM일 때 상대 user_id 리스트 (1명)
+
+class ChatRoomCreateResponse(BaseModel):
+    status: int
+    chat_id: str
+    members: List[str]
+    message: str

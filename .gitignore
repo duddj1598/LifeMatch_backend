@@ -1,6 +1,9 @@
 serviceAccountKey.json
 __pycache__/
 venv/
+.env
+*.pyc
+database/
 
 .env
 .json

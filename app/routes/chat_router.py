@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
 
-from app.schemas.chat_schema import ChatMessageCreate
+from app.schemas.chat_schema import (ChatMessageCreate, ChatRoomCreateRequest, ChatRoomCreateResponse)
 from app.services.chat_service import (
     get_chat_list,
     leave_chat_room,
     send_message,
     get_chat_history,
+    create_chat_room
 )
 from app.middleware.auth import get_current_user
 
@@ -83,5 +84,24 @@ def chat_history(
     try:
         user_id = current_user["user_doc_id"]
         return get_chat_history(chat_id, user_id, message_id, size)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# -------------------------------------------------
+# 🔥 채팅방 생성 (group / dm)
+# -------------------------------------------------
+@router.post("/create", response_model=ChatRoomCreateResponse)
+def chat_create(
+    req: ChatRoomCreateRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    채팅방 생성 API  
+    - group 생성 → group_id 필요  
+    - dm 생성 → target_ids = [user1, user2]
+    """
+    try:
+        user_id = current_user["user_doc_id"]   # 🔥 내 Firestore 문서 ID
+        return create_chat_room(req, current_user_id=user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
