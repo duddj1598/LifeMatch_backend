@@ -84,7 +84,7 @@ def create_group(group: GroupCreate, leader_id: str) -> Dict[str, Any]:
     }
 
 
-# -------------------------------------------------
+## -------------------------------------------------
 # 그룹 상세 조회
 # -------------------------------------------------
 def get_group_by_id(group_id: str) -> Optional[GroupRead]:
@@ -97,11 +97,10 @@ def get_group_by_id(group_id: str) -> Optional[GroupRead]:
         data = _apply_client_side_defaults(data)
         data = _strip_timestamp(data)
 
-        # ---------------------------------------------------
-        # 🔥 leader_id 가져오기
-        # ---------------------------------------------------
-        leader_doc_id = data.get("leader_id")  # Firestore users 문서 ID (현재 저장된 리더 ID)
-
+        # -----------------------------
+        # 🔥 leader 정보 변환
+        # -----------------------------
+        leader_doc_id = data.get("leader_id")
         leader_login_id = None
         leader_nickname = None
 
@@ -109,21 +108,36 @@ def get_group_by_id(group_id: str) -> Optional[GroupRead]:
             leader_doc = db.collection("users").document(leader_doc_id).get()
             if leader_doc.exists:
                 leader_data = leader_doc.to_dict()
-                leader_login_id = leader_data.get("user_id")       # ⭐ 로그인 ID
-                leader_nickname = leader_data.get("user_nickname") # 닉네임
+                leader_login_id = leader_data.get("user_id")
+                leader_nickname = leader_data.get("user_nickname")
 
-        # ---------------------------------------------------
-        # 🔥 Flutter가 필요로 하는 값 추가
-        # ---------------------------------------------------
         data["leader_nickname"] = leader_nickname
-        data["leader_id"] = leader_login_id          # ⭐ Flutter DM 생성에 필수
+        data["leader_id"] = leader_login_id       
         data["current_member"] = data.get("current_member", 0)
+
+        # -----------------------------
+        # 🔥 멤버 목록 변환 (문서 ID → 닉네임)
+        # -----------------------------
+        member_doc_ids = data.get("members", [])
+        members_nickname_list = []
+
+        for user_doc_id in member_doc_ids:
+            user_doc = db.collection("users").document(user_doc_id).get()
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                nickname = user_data.get("user_nickname")
+                if nickname:
+                    members_nickname_list.append(nickname)
+
+        # GroupRead 스키마의 members 필드로 추가
+        data["members"] = members_nickname_list  
 
         return GroupRead(id=doc.id, **data)
 
     except Exception as e:
         print(f"[get_group_by_id] error: {e}")
         return None
+
 
 
 # -------------------------------------------------
