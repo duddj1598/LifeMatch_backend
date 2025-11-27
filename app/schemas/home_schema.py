@@ -5,6 +5,7 @@ class RecommendedActivity(BaseModel):
     group_id: str
     group_name: str
     category: Optional[str] = None
+    leader_id: Optional[str] = None
 
 class HomeData(BaseModel):
     user_lifestyle_type: str
