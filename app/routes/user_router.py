@@ -11,12 +11,39 @@ from app.services.user_service import (
     find_user_id,
     reset_password,
     get_managed_groups,
-    get_joined_groups
+    get_joined_groups,
+    is_id_duplicate,
+    is_nickname_duplicate,
+    is_email_duplicate
 )
 from app.middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
+
+# 중복 확인
+@router.get("/check/id")
+def check_duplicate_id(user_id: str):
+    """아이디 중복 확인: 중복이면 409 에러"""
+    if is_id_duplicate(user_id):
+        raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
+    return {"status": 200, "message": "사용 가능한 아이디입니다."}
+
+
+@router.get("/check/nickname")
+def check_duplicate_nickname(nickname: str):
+    """닉네임 중복 확인: 중복이면 409 에러"""
+    if is_nickname_duplicate(nickname):
+        raise HTTPException(status_code=409, detail="이미 사용 중인 닉네임입니다.")
+    return {"status": 200, "message": "사용 가능한 닉네임입니다."}
+
+
+@router.get("/check/email")
+def check_duplicate_email(email: str):
+    """이메일 중복 확인: 중복이면 409 에러"""
+    if is_email_duplicate(email):
+        raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다.")
+    return {"status": 200, "message": "사용 가능한 이메일입니다."}
 
 
 # 회원가입
@@ -25,9 +52,10 @@ def signup(user: UserCreate):
     try:
         print("recieved user data:", user)
         return create_user(user)
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 # 로그인 (JWT 발급)
@@ -39,7 +67,6 @@ def login(id: str, password: str):
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 # 아이디(닉네임) 찾기
@@ -81,6 +108,7 @@ def api_reset_password(request: ResetPasswordRequest = Body(...)):
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"서버 오류 발생: {str(e)}")
+
 
 # -------------------------------------------------
 # 🔥 내가 리더인 소모임 목록 조회
