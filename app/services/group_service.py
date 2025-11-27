@@ -14,13 +14,6 @@ from app.config.llm_config import get_embedding_model
 COLLECTION = "groups"
 DEFAULT_MAX_MEMBER = 10
 
-class NotFoundException(Exception): 
-    """리소스(그룹)를 찾을 수 없을 때 사용"""
-    pass
-
-class ForbiddenException(Exception): 
-    """권한이 없을 때(예: 리더가 아닐 때) 사용"""
-    pass
 # -------------------------------------------------
 # 공통 유틸
 # -------------------------------------------------
@@ -333,20 +326,20 @@ def update_group_detail(
     group_doc = group_ref.get()
 
     if not group_doc.exists:
-        raise NotFoundException(f"Group with ID {group_id} not found.")
+        # 404 상태를 나타내는 메시지 사용
+        raise Exception(f"404: Group with ID {group_id} not found.") 
 
     group_data = group_doc.to_dict()
     
     # 1. 리더 권한 검증
     if group_data.get('leader_id') != current_user_doc_id:
-        raise ForbiddenException("Only the group leader can modify group details.")
+        # 403 상태를 나타내는 메시지 사용
+        raise Exception("403: Only the group leader can modify group details.") 
 
     # 2. 업데이트할 데이터 필터링
-    # model_dump(exclude_none=True)를 사용하여 None인 필드(즉, 변경하지 않은 필드)를 제외
     update_payload = update_data.model_dump(exclude_none=True) 
 
     if not update_payload:
-        # 변경할 필드가 하나도 없는 경우
         return {"message": "No fields provided for update."}
     
     # 3. Firestore 업데이트 실행
@@ -355,5 +348,5 @@ def update_group_detail(
         return {"message": "Group details updated successfully."}
     except Exception as e:
         print(f"Firestore update error: {e}")
-        # 오류가 발생한 경우, 상세 오류를 숨기고 일반적인 오류 메시지 반환
-        raise Exception("Failed to update group details in database.")
+        # DB 오류는 500 상태를 나타냄
+        raise Exception("500: Failed to update group details in database.")

@@ -75,6 +75,10 @@ def read_group_api(group_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# -------------------------------------------------
+# 그룹 정보 수정
+# -------------------------------------------------
 @router.patch(
     "/{group_id}",
     summary="그룹 정보 수정 (이름, 주제, 설명)",
