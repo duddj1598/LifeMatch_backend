@@ -186,7 +186,9 @@ def _get_dm_chat_history(chat_id, user_doc_id, message_id, size):
         msg["is_mine"] = (msg.get("user_id") == user_doc_id)  # 🔥 추가
         messages.append(msg)
 
-    messages.sort(key=lambda m: m["message_id"])
+    # messages.sort(key=lambda m: m["time"])
+    #내림차순으로 정렬
+    messages.sort(key=lambda m: m["time"], reverse=True)
 
     next_msg = messages[0]["message_id"] if len(messages) == size else None
 
