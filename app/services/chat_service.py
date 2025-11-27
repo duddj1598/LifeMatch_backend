@@ -173,11 +173,10 @@ def _get_dm_chat_history(chat_id, user_doc_id, message_id, size):
     if message_id is None:
         query = messages_ref.order_by(
             "message_id", direction=firestore.Query.DESCENDING
-        ).limit(size)
+        )
     else:
         query = messages_ref.where("message_id", "<", int(message_id)) \
-            .order_by("message_id", direction=firestore.Query.DESCENDING) \
-            .limit(size)
+            .order_by("message_id", direction=firestore.Query.DESCENDING)
 
     docs = list(query.stream())
     messages = []
@@ -187,7 +186,9 @@ def _get_dm_chat_history(chat_id, user_doc_id, message_id, size):
         msg["is_mine"] = (msg.get("user_id") == user_doc_id)  # 🔥 추가
         messages.append(msg)
 
-    messages.sort(key=lambda m: m["message_id"])
+    # messages.sort(key=lambda m: m["time"])
+    #내림차순으로 정렬
+    messages.sort(key=lambda m: m["time"], reverse=True)
 
     next_msg = messages[0]["message_id"] if len(messages) == size else None
 
@@ -219,10 +220,10 @@ def get_chat_history(chat_id: str, user_doc_id: str, message_id: int | None, siz
         messages_ref = db.collection("groups").document(chat_id).collection("messages")
 
         if message_id is None:
-            query = messages_ref.order_by("message_id", direction=firestore.Query.DESCENDING).limit(size)
+            query = messages_ref.order_by("message_id", direction=firestore.Query.DESCENDING)
         else:
             query = messages_ref.where("message_id", "<", int(message_id)) \
-                .order_by("message_id", direction=firestore.Query.DESCENDING).limit(size)
+                .order_by("message_id", direction=firestore.Query.DESCENDING)
 
         docs = list(query.stream())
         messages = []
