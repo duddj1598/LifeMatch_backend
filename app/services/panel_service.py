@@ -214,7 +214,10 @@ def decompose_and_search(query: str, category: Optional[str], conn):
     recommended_user_id = None
     if matched_user:
         recommended_user_id = matched_user.get("user_id") or matched_user["id"]
-        logging.info(f"[panel] selected user = {recommended_user_id}")
+        #userid넣을때 "user" : {"id" : recommended_user_id, "lifestryle" : recommended_user_lifestyle} 형태로 넣기
+        recommended_user_lifestyle = matched_user.get("user_lifestyle_type")
+        recommended_user = {"id": recommended_user_id, "lifestyle": recommended_user_lifestyle}
+        logging.info(f"[panel] selected user = {recommended_user}")
 
     # 3) SQL 실행
     with conn.cursor() as cur:
@@ -248,11 +251,11 @@ def decompose_and_search(query: str, category: Optional[str], conn):
     # 7) 두 조건 교집합
     final_ids = list(set(demographic_ids) & set(embedding_matched_ids))
 
-    # 8) 유저 추천 아이디를 맨 앞에 추가
-    if recommended_user_id:
-        final_ids = [recommended_user_id] + final_ids
-
-    logging.info(f"[panel] final_ids: {final_ids}")
+    logging.info(f"[panel] final_result: {final_ids}")
     logging.info(f"elapsed: {time.time() - start}s")
 
-    return {"id": final_ids, "length": len(final_ids)}
+    return {
+        "user" : recommended_user,
+        "panel" : final_ids,
+        "length": len(final_ids)
+    }
