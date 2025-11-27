@@ -205,15 +205,6 @@ def find_matching_panel_ids(embedding_results_json: List[dict], conn, panel_resp
     return list(matched_ids)
 
 # --------------------------------------------------------
-
-# --------------------------------------------------------
-
-
-
-
-
-
-# --------------------------------------------------------
 # 🔥 confidence 결합·정규화·캘리브레이션 함수
 # --------------------------------------------------------
 def normalize_confidence(val, min_val=0.0, max_val=1.0):
