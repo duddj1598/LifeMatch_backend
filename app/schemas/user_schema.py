@@ -26,3 +26,16 @@ class ResetPasswordRequest(BaseModel):
     security_answer: str
     new_password: str
 '''추가됨'''
+
+class MyGroup(BaseModel):
+    group_id: str
+    group_name: str
+    category: Optional[str]
+    current_member: int
+    max_member: int
+    description: Optional[str]
+    group_image: Optional[str]
+
+class MyGroupListResponse(BaseModel):
+    status: int
+    groups: List[MyGroup]

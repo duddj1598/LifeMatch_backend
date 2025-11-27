@@ -1,7 +1,6 @@
 from app.config.firebase_config import db
 from app.services.group_service import _add_member_to_group
 from fastapi import HTTPException
-from google.cloud.firestore_v1.base_query import FieldFilter
 from typing import List
 
 from app.schemas.notification_schema import (
@@ -15,8 +14,11 @@ from app.schemas.notification_schema import (
 # 알림 전체 조회
 # -------------------------------------------------
 def get_all_notifications(user_id: str) -> dict:
+    print(f"[notif] get_all_notifications for user_id={user_id}")
     invites = _get_pending_invites(user_id)
+    print(f"[notif] invites count = {len(invites)}")
     applicants = _get_pending_applicants(user_id)
+    print(f"[notif] applicants count = {len(applicants)}")
     
     return NotificationsListResponse(
         status=200,
@@ -31,18 +33,17 @@ def get_all_notifications(user_id: str) -> dict:
 def _get_pending_invites(user_id: str) -> List[GroupInviteNotification]:
     actions_ref = db.collection("group_actions")
 
-    query = actions_ref.where(
-        filter=FieldFilter("user_id", "==", user_id)
-    ).where(
-        filter=FieldFilter("action_type", "==", "invite")
-    ).where(
-        filter=FieldFilter("status", "==", "pending")
+    query = (
+        actions_ref
+        .where("user_id", "==", user_id)
+        .where("action_type", "==", "invite")
+        .where("status", "==", "pending")
     )
 
     invite_list = []
-
     for doc in query.stream():
         data = doc.to_dict()
+        print(f"[notif] invite doc: {doc.id} -> {data}")
 
         group_doc = db.collection("groups").document(data["group_id"]).get()
         group_data = group_doc.to_dict() if group_doc.exists else {}
@@ -66,18 +67,18 @@ def _get_pending_invites(user_id: str) -> List[GroupInviteNotification]:
 def _get_pending_applicants(user_id: str) -> List[GroupApplicantNotification]:
     actions_ref = db.collection("group_actions")
 
-    query = actions_ref.where(
-        filter=FieldFilter("leader_id", "==", user_id)
-    ).where(
-        filter=FieldFilter("action_type", "==", "application")
-    ).where(
-        filter=FieldFilter("status", "==", "pending")
+    query = (
+        actions_ref
+        .where("leader_id", "==", user_id)
+        .where("action_type", "==", "application")
+        .where("status", "==", "pending")
     )
 
     applicant_list = []
 
     for doc in query.stream():
         data = doc.to_dict()
+        print(f"[notif] applicant doc: {doc.id} -> {data}")
 
         applicant_id = data["user_id"]
         user_doc = db.collection("users").document(applicant_id).get()
@@ -113,6 +114,7 @@ def respond_to_action(
         raise HTTPException(status_code=404, detail="존재하지 않는 요청입니다.")
 
     data = action_doc.to_dict()
+    print(f"[notif] respond_to_action data: {data}")
 
     if data["status"] != "pending":
         raise HTTPException(status_code=400, detail="이미 처리된 요청입니다.")
