@@ -254,5 +254,80 @@ def decompose_and_search(query: str, category: Optional[str], conn):
 
     logging.info(f"[panel] final_ids: {final_ids}")
     logging.info(f"elapsed: {time.time() - start}s")
+    # 서버 로그에 통계 출력
+    stats = get_stats(final_ids, conn)
+    logging.info("\n" + "="*30 + " [panel] stats " + "="*30)
+    print_stats(stats)
+    logging.info("="*80)
 
     return {"id": final_ids}
+
+
+# --------------------------------------------------------
+# 🔥 final_ids 기준 panel_demographic 통계 출력 함수
+# --------------------------------------------------------
+def print_stats(d, indent=0):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                logging.info("  " * indent + f"{k}:")
+                print_stats(v, indent+1)
+            else:
+                logging.info("  " * indent + f"{k}: {v}")
+
+def get_stats(final_ids: List[str], conn):
+    if not final_ids:
+        return {}
+    stats = {}
+    id_tuple = tuple(final_ids)
+    where_clause = f"WHERE id IN %s"
+    with conn.cursor() as cur:
+        # 성별 분포
+        cur.execute(f"SELECT 성별, COUNT(*) FROM panel_demographic {where_clause} GROUP BY 성별", (id_tuple,))
+        stats["gender_distribution"] = {row[0] if row[0] else "미상": row[1] for row in cur.fetchall()}
+
+        # 만나이 구간 분포
+        cur.execute(f"""
+            SELECT 
+                CASE 
+                    WHEN 만나이 IS NULL THEN '미상'
+                    WHEN CAST(만나이 AS INTEGER) < 20 THEN '10대 이하'
+                    WHEN CAST(만나이 AS INTEGER) < 30 THEN '20대'
+                    WHEN CAST(만나이 AS INTEGER) < 40 THEN '30대'
+                    WHEN CAST(만나이 AS INTEGER) < 50 THEN '40대'
+                    WHEN CAST(만나이 AS INTEGER) < 60 THEN '50대'
+                    ELSE '60대 이상'
+                END AS 나이대, COUNT(*)
+            FROM panel_demographic {where_clause}
+            GROUP BY 나이대
+        """, (id_tuple,))
+        stats["age_group_distribution"] = {row[0]: row[1] for row in cur.fetchall()}
+
+        # 월평균 개인소득 구간 분포
+        cur.execute(f"""
+            SELECT 
+                CONCAT(
+                    LEAST(CAST(월평균개인소득_min AS INTEGER), 1000), '~', 
+                    CASE WHEN CAST(월평균개인소득_max AS INTEGER) >= 999 THEN '1000+' ELSE 월평균개인소득_max END
+                ) AS 소득구간, COUNT(*)
+            FROM panel_demographic {where_clause}
+            GROUP BY 소득구간
+        """, (id_tuple,))
+        stats["income_range_distribution"] = {row[0]: row[1] for row in cur.fetchall()}
+
+        # 거주지역_시도 분포
+        cur.execute(f"SELECT 거주지역_시도, COUNT(*) FROM panel_demographic {where_clause} GROUP BY 거주지역_시도", (id_tuple,))
+        stats["region_distribution"] = {row[0] if row[0] else "미상": row[1] for row in cur.fetchall()}
+
+        # 결혼여부 분포
+        cur.execute(f"SELECT 결혼여부, COUNT(*) FROM panel_demographic {where_clause} GROUP BY 결혼여부", (id_tuple,))
+        stats["married_distribution"] = {row[0] if row[0] else "미상": row[1] for row in cur.fetchall()}
+
+        # 차량보유여부 분포
+        cur.execute(f"SELECT 차량보유여부, COUNT(*) FROM panel_demographic {where_clause} GROUP BY 차량보유여부", (id_tuple,))
+        stats["car_ownership_distribution"] = {row[0] if row[0] else "미상": row[1] for row in cur.fetchall()}
+
+        # Null 비율 (예시: 성별)
+        cur.execute(f"SELECT COUNT(*) FROM panel_demographic {where_clause} AND 성별 IS NULL", (id_tuple,))
+        stats["null_gender_count"] = cur.fetchone()[0]
+
+    return stats
