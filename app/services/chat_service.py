@@ -50,23 +50,11 @@ def get_chat_list(user_id: str):
         other_nickname = "알 수 없음"
 
         if other_user_id:
-            # 🔥 Firestore에서 user_id == 로그인ID 로 문서 검색
-            query = (
-                db.collection("users")
-                .where("user_id", "==", other_user_id)
-                .limit(1)
-                .stream()
-            )
-
-            other_user_doc = None
-            for doc in query:
-                other_user_doc = doc
-                break
-
-            if other_user_doc and other_user_doc.exists:
-                user_data = other_user_doc.to_dict()
-                other_nickname = user_data.get("user_nickname", "닉네임 없음")
-
+            user_doc = db.collection("users").document(other_user_id).get()
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            other_nickname = user_data.get("user_nickname", "닉네임 없음")
+        
         chat_list.append({
             "chat_id": dm_doc.id,
             "type": "dm",
@@ -314,6 +302,12 @@ def create_chat_room(req: ChatRoomCreateRequest, current_user_id: str):
         # 🔥 1) target_login_id → Firestore 문서 조회
         # ============================================
         query = db.collection("users").where("user_id", "==", target_login_id).limit(1).stream()
+        for doc in query:
+            if doc.exists:
+                target_login_id = doc.id  # Firestore 문서 ID로 변경
+                break
+            else:
+                target_login_id = None
 
         if not target_login_id:
             raise HTTPException(status_code=404, detail="해당 유저를 찾을 수 없습니다.")
