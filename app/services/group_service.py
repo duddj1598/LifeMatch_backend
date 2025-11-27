@@ -227,6 +227,7 @@ def apply_semantic_search(docs, query: str) -> List[GroupRead]:
 def search_groups(
     query: Optional[str] = None,
     category: Optional[str] = None,
+    user_id: str = ""
 ) -> List[GroupRead]:
     try:
         print("\n" * 2, "---------------------------------")
@@ -253,6 +254,11 @@ def search_groups(
         if not query:
             print("[search_groups] no query → return all")
             for doc in docs:
+                group_data = doc.to_dict()
+                leader_id = group_data.get("leader_id")
+                member_ids = group_data.get("members", [])
+                if leader_id == user_id or user_id in member_ids:
+                    continue    
                 data = doc.to_dict()
                 data = _apply_client_side_defaults(data)
                 data = _strip_timestamp(data)
@@ -265,6 +271,14 @@ def search_groups(
         query_lower = query.lower()
 
         for doc in docs:
+
+            group_data = doc.to_dict()
+            leader_id = group_data.get("leader_id")
+            member_ids = group_data.get("members", [])
+            print(f"[search_groups] checking group {doc.id} with leader {leader_id} and members {member_ids}")
+            if leader_id == user_id or user_id in member_ids:
+                continue    
+
             data = doc.to_dict()
             name = str(data.get("group_name", "")).lower()
             desc = str(data.get("description", "")).lower()

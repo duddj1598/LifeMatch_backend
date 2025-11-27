@@ -35,15 +35,18 @@ def create_group_api(
 def list_or_search_groups(
     q: Optional[str] = Query(None, alias="q", description="자연어 검색어"),
     category: Optional[str] = Query(None, description="카테고리"),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     - q: 자연어 검색어 (예: '주말에 러닝할 사람')
     - category: 카테고리 문자열 (예: '여가·문화')
     """
     try:
+        user_id = current_user["user_doc_id"]
         results = search_groups(
             query=q,
             category=category,
+            user_id=user_id,
         )
         return results
     except Exception as e:
