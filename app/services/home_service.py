@@ -55,10 +55,6 @@ def get_home_recommendations(user_id: str) -> dict:
         .limit(10) 
         
     for doc in query.stream():
-        # 2개가 다 찼으면 그만 찾기
-        if len(activities) >= 2:
-            break
-
         group_data = doc.to_dict()
         leader_id = group_data.get("leader_id")
 
@@ -74,7 +70,13 @@ def get_home_recommendations(user_id: str) -> dict:
                 leader_id=leader_id
             )
         )
+
         exclude_ids.add(doc.id)
+
+        # 2개가 다 찼으면 그만 찾기
+        if len(activities) >= 2:
+            break
+
 
     # 🔹 2. Fallback: 부족하면 기본 카테고리에서 채우기
     # (여기서도 마찬가지로 내 그룹은 제외해야 함)
