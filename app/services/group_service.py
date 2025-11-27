@@ -95,30 +95,35 @@ def get_group_by_id(group_id: str) -> Optional[GroupRead]:
 
         data = doc.to_dict()
         data = _apply_client_side_defaults(data)
-        data = _strip_timestamp(data)  # 🔥 created_at 제거
+        data = _strip_timestamp(data)
 
         # ---------------------------------------------------
-        # 🔥 leader_id 로 users 컬렉션 조회하여 user_nickname 추가
+        # 🔥 leader_id 가져오기
         # ---------------------------------------------------
-        leader_id = data.get("leader_id")
+        leader_doc_id = data.get("leader_id")  # Firestore users 문서 ID (현재 저장된 리더 ID)
+
+        leader_login_id = None
         leader_nickname = None
 
-        if leader_id:
-            leader_doc = db.collection("users").document(leader_id).get()
+        if leader_doc_id:
+            leader_doc = db.collection("users").document(leader_doc_id).get()
             if leader_doc.exists:
                 leader_data = leader_doc.to_dict()
-                leader_nickname = leader_data.get("user_nickname")
+                leader_login_id = leader_data.get("user_id")       # ⭐ 로그인 ID
+                leader_nickname = leader_data.get("user_nickname") # 닉네임
 
-        # GroupRead로 반환될 필드에 새로운 값 추가
+        # ---------------------------------------------------
+        # 🔥 Flutter가 필요로 하는 값 추가
+        # ---------------------------------------------------
         data["leader_nickname"] = leader_nickname
+        data["leader_id"] = leader_login_id          # ⭐ Flutter DM 생성에 필수
         data["current_member"] = data.get("current_member", 0)
-        print(data)
 
         return GroupRead(id=doc.id, **data)
+
     except Exception as e:
         print(f"[get_group_by_id] error: {e}")
         return None
-
 
 
 # -------------------------------------------------

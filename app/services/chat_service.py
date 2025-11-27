@@ -93,34 +93,21 @@ def leave_chat_room(chat_id: str, user_doc_id: str):
 
     return {"status": 200, "message": "채팅방에서 퇴장했습니다."}
 
-
-# -------------------------------------------------
-# 🔥 메시지 전송
-# -------------------------------------------------
-def send_message(chat_id: str, user_doc_id: str, payload: ChatMessageCreate):
-    group_ref = db.collection("groups").document(chat_id)
-    group_doc = group_ref.get()
-
-    if not group_doc.exists:
-        raise HTTPException(status_code=404, detail="채팅방을 찾을 수 없습니다.")
-
-    group_data = group_doc.to_dict()
-    if user_doc_id not in group_data.get("members", []):
-        raise HTTPException(status_code=403, detail="이 채팅방의 멤버가 아닙니다.")
-
+def _send_dm_message(chat_id: str, user_doc_id: str, payload: ChatMessageCreate):
     # 9자리 숫자 message_id
     message_id = int(str(uuid.uuid4().int)[:9])
     now = datetime.utcnow().isoformat() + "Z"
 
     message_data = {
         "message_id": message_id,
-        "user_id": user_doc_id,  # 🔥 이제 Firestore user_doc_id 그대로 저장
+        "user_id": user_doc_id,
         "content": payload.content,
         "attachments": payload.attachments or [],
         "time": now,
     }
 
-    db.collection("groups").document(chat_id) \
+    # DM 메시지는 chat_rooms/{chat_id}/messages 에 저장
+    db.collection("chat_rooms").document(chat_id) \
         .collection("messages").document(str(message_id)).set(message_data)
 
     return {
@@ -131,49 +118,116 @@ def send_message(chat_id: str, user_doc_id: str, payload: ChatMessageCreate):
 
 
 # -------------------------------------------------
-# 🔥 채팅 내역 조회 (위로 스크롤 페이징)
+# 🔥 메시지 전송
 # -------------------------------------------------
-def get_chat_history(
-    chat_id: str,
-    user_doc_id: str,
-    message_id: int | None,
-    size: int,
-):
+def send_message(chat_id: str, user_doc_id: str, payload: ChatMessageCreate):
+
+    # 1) 그룹 채팅인지 확인
     group_ref = db.collection("groups").document(chat_id)
     group_doc = group_ref.get()
 
-    if not group_doc.exists:
+    if group_doc.exists:
+        # 기존 그룹 메시지 처리 그대로 둠
+        group_data = group_doc.to_dict()
+        if user_doc_id not in group_data.get("members", []):
+            raise HTTPException(status_code=403, detail="이 채팅방의 멤버가 아닙니다.")
+
+        message_id = int(str(uuid.uuid4().int)[:9])
+        now = datetime.utcnow().isoformat() + "Z"
+
+        message_data = {
+            "message_id": message_id,
+            "user_id": user_doc_id,
+            "content": payload.content,
+            "attachments": payload.attachments or [],
+            "time": now,
+        }
+
+        db.collection("groups").document(chat_id) \
+            .collection("messages").document(str(message_id)).set(message_data)
+
+        return {
+            "status": 200,
+            "chat_id": chat_id,
+            **message_data,
+        }
+
+    # 2) DM 채팅인지 확인
+    dm_ref = db.collection("chat_rooms").document(chat_id)
+    dm_doc = dm_ref.get()
+
+    if dm_doc.exists:
+        return _send_dm_message(chat_id, user_doc_id, payload)
+
+    raise HTTPException(status_code=404, detail="채팅방을 찾을 수 없습니다.")
+
+def _get_dm_chat_history(chat_id, user_doc_id, message_id, size):
+    dm_ref = db.collection("chat_rooms").document(chat_id)
+    dm_doc = dm_ref.get()
+
+    if not dm_doc.exists:
         raise HTTPException(status_code=404, detail="채팅방을 찾을 수 없습니다.")
 
-    group_data = group_doc.to_dict()
-    if user_doc_id not in group_data.get("members", []):
-        raise HTTPException(status_code=403, detail="이 채팅방의 멤버가 아닙니다.")
+    messages_ref = dm_ref.collection("messages")
 
-    messages_ref = db.collection("groups").document(chat_id).collection("messages")
-
-    # 최신부터 N개
+    # 최신 메시지 size개
     if message_id is None:
         query = messages_ref.order_by(
             "message_id", direction=firestore.Query.DESCENDING
         ).limit(size)
     else:
-        # 더 이전 메시지 N개 (message_id보다 작은 것들)
-        query = (
-            messages_ref.where("message_id", "<", int(message_id))
-            .order_by("message_id", direction=firestore.Query.DESCENDING)
+        query = messages_ref.where("message_id", "<", int(message_id)) \
+            .order_by("message_id", direction=firestore.Query.DESCENDING) \
             .limit(size)
-        )
 
     docs = list(query.stream())
     messages = [doc.to_dict() for doc in docs]
 
-    next_message_id = messages[-1]["message_id"] if len(messages) == size else None
+    next_msg = messages[-1]["message_id"] if len(messages) == size else None
 
-    # 프론트는 messages 배열을 시간 순으로 쓰고 싶다면 역순 정렬하면 됨
     return {
         "messages": messages,
-        "next_message_id": next_message_id,
+        "next_message_id": next_msg,
     }
+
+
+
+
+# -------------------------------------------------
+# 🔥 채팅 내역 조회 (위로 스크롤 페이징)
+# -------------------------------------------------
+def get_chat_history(chat_id: str, user_doc_id: str, message_id: int | None, size: int):
+
+    # 1) 그룹 채팅인지
+    group_ref = db.collection("groups").document(chat_id)
+    group_doc = group_ref.get()
+
+    if group_doc.exists:
+        group_data = group_doc.to_dict()
+        if user_doc_id not in group_data.get("members", []):
+            raise HTTPException(status_code=403, detail="이 채팅방의 멤버가 아닙니다.")
+
+        messages_ref = db.collection("groups").document(chat_id).collection("messages")
+
+        if message_id is None:
+            query = messages_ref.order_by("message_id", direction=firestore.Query.DESCENDING).limit(size)
+        else:
+            query = messages_ref.where("message_id", "<", int(message_id)) \
+                .order_by("message_id", direction=firestore.Query.DESCENDING).limit(size)
+
+        docs = list(query.stream())
+        messages = [doc.to_dict() for doc in docs]
+
+        next_msg = messages[-1]["message_id"] if len(messages) == size else None
+
+        return {
+            "messages": messages,
+            "next_message_id": next_msg
+        }
+
+    # 2) DM 채팅이면 여기로
+    return _get_dm_chat_history(chat_id, user_doc_id, message_id, size)
+
 
 def _generate_dm_key(u1: str, u2: str) -> str:
     """DM 고유 키: user_id 두 개를 정렬해서 묶음"""

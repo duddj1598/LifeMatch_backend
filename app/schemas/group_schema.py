@@ -15,6 +15,7 @@ class GroupRead(GroupCreate):
     created_at: Optional[str] = None  # ISO 포맷 문자열
     chat_id: Optional[str] = None
     leader_nickname: Optional[str] = None    # 🔥 추가
+    leader_id: Optional[str] = None        # ⭐ 추가!
     current_member: Optional[int] = 0       # 🔥 추가
 
 
