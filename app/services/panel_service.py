@@ -36,6 +36,7 @@ def LLM_Decomposer(prompt: str) -> QueryOutputSchema:
     chroma = get_chroma_db()
     LLM = get_llm_client()
 
+    # 🔥 verbalized confidence 출력 지시
     chain = (
         {
             "context": chroma.as_retriever() | (lambda docs: "\n\n".join([doc.page_content for doc in docs])),
@@ -47,6 +48,7 @@ def LLM_Decomposer(prompt: str) -> QueryOutputSchema:
                 아래 참고 문서를 기반으로 질문에 대해
                 1. panel_demographic 테이블에서 검색 가능한 조건은 SQL로 생성하고,
                 2. panel_demographic에서 검색할 수 없는 조건(비정형/자유응답 등)은 임베딩 기반 의미검색용 문장으로 생성하세요.
+                3. 각 항목별로 verbalized confidence(모델이 해당 답변에 대해 얼마나 확신하는지 0~1 사이의 수치와 간단한 설명)를 함께 출력하세요.
 
                 질문:
                 {question}
@@ -139,6 +141,7 @@ def embedding_search(queries_to_embedding: List[str], conn) -> List[dict]:
                 continue
 
         scored = []
+        sim_scores = [] # 🔥 retrieval sim_score
         for qid, _, choice_text, summary_emb in summary_rows:
             if isinstance(summary_emb, str):
                 try:
@@ -149,6 +152,7 @@ def embedding_search(queries_to_embedding: List[str], conn) -> List[dict]:
                 continue
 
             score = cosine_similarity(query_emb, summary_emb)
+            sim_scores.append(score)
             scored.append({
                 "query": query,
                 "question_id": qid,
@@ -158,6 +162,9 @@ def embedding_search(queries_to_embedding: List[str], conn) -> List[dict]:
 
         if scored:
             best = max(scored, key=lambda x: x["score"])
+            # 🔥 retrieval sim_score: top K(여기선 summary_rows) 평균/최댓값
+            best["retrieval_sim_score_avg"] = float(np.mean(sim_scores)) if sim_scores else None
+            best["retrieval_sim_score_max"] = float(np.max(sim_scores)) if sim_scores else None
             results.append(best)
 
     return results
@@ -197,6 +204,55 @@ def find_matching_panel_ids(embedding_results_json: List[dict], conn, panel_resp
 
     return list(matched_ids)
 
+# --------------------------------------------------------
+
+# --------------------------------------------------------
+
+
+
+
+
+
+# --------------------------------------------------------
+# 🔥 confidence 결합·정규화·캘리브레이션 함수
+# --------------------------------------------------------
+def normalize_confidence(val, min_val=0.0, max_val=1.0):
+    # min-max 정규화 (값이 None이면 0 반환)
+    if val is None:
+        return 0.0
+    return max(min((val - min_val) / (max_val - min_val), 1.0), 0.0)
+
+def calibrate_confidence(conf, method="identity"):
+    # 캘리브레이션 함수 (identity: 그대로 반환, 향후 모델 기반 보정 가능)
+    if method == "identity":
+        return conf
+    # 예: sigmoid 보정 등 추가 가능
+    return conf
+
+def combine_confidences(verbalized_conf, retrieval_conf, weights=(0.6, 0.4)):
+    # verbalized_conf와 retrieval_conf만 결합
+    confs = [verbalized_conf, retrieval_conf]
+    norm_confs = [normalize_confidence(c) for c in confs]
+    combined = sum(w * c for w, c in zip(weights, norm_confs))
+    return calibrate_confidence(combined)
+
+# --------------------------------------------------------
+# 🔥 신뢰도 결합·출력 비동기 함수
+# --------------------------------------------------------
+import threading
+def calc_and_log_confidence(llm_out, sql_query, embedding_results):
+    try:
+        # LLM verbalized confidence (SQL 기준)
+        verbalized_conf = float(getattr(llm_out, "sql_confidence", 0.0))
+    except Exception:
+        verbalized_conf = 0.0
+
+    if embedding_results and "retrieval_sim_score_avg" in embedding_results[0]:
+        retrieval_conf = float(embedding_results[0]["retrieval_sim_score_avg"])
+    else:
+        retrieval_conf = 0.0
+    final_confidence = combine_confidences(verbalized_conf, retrieval_conf)
+    logging.info(f"[panel] confidence: verbalized={verbalized_conf:.3f}, retrieval={retrieval_conf:.3f}, final={final_confidence:.3f}")
 
 # --------------------------------------------------------
 # 🔥 메인 로직: category 포함 패널 검색
@@ -254,5 +310,9 @@ def decompose_and_search(query: str, category: Optional[str], conn):
 
     logging.info(f"[panel] final_ids: {final_ids}")
     logging.info(f"elapsed: {time.time() - start}s")
+    
+    # 9) 신뢰도 결합·출력 비동기 실행 (응답속도 개선)
+    threading.Thread(target=calc_and_log_confidence, args=(llm_out, sql_query, embedding_results)).start()
+
 
     return {"id": final_ids, "length": len(final_ids)}
