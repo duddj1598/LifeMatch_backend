@@ -1,13 +1,17 @@
 from fastapi import APIRouter, HTTPException, Query, status, Depends
 from typing import List, Optional
 
-from app.schemas.group_schema import GroupCreate, GroupRead
+from app.schemas.group_schema import GroupCreate, GroupRead, GroupUpdateRequest
 from app.services.group_service import (
     create_group,
     search_groups,
     get_group_by_id,
+    update_group_detail,
 )
 from app.middleware.auth import get_current_user
+
+class NotFoundException(Exception): pass 
+class ForbiddenException(Exception): pass
 
 router = APIRouter(prefix="/api/group", tags=["Group"])
 
@@ -70,3 +74,48 @@ def read_group_api(group_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------------------------------------
+# 그룹 정보 수정
+# -------------------------------------------------
+@router.patch(
+    "/{group_id}",
+    summary="그룹 정보 수정 (이름, 주제, 설명)",
+    status_code=status.HTTP_200_OK,
+    response_model=dict,
+)
+def update_group_details_api(
+    group_id: str,
+    update_data: GroupUpdateRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        current_user_doc_id = current_user.get("user_doc_id") 
+        
+        if not current_user_doc_id:
+             raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, 
+                detail="Authentication failed: User ID not found."
+             )
+
+        result = update_group_detail(
+            group_id=group_id,
+            current_user_doc_id=current_user_doc_id,
+            update_data=update_data
+        )
+        return result
+        
+    except Exception as e:
+        error_msg = str(e)
+        
+        # ⭐️ [핵심 수정] 오류 메시지를 분석하여 상태 코드 변환
+        if error_msg.startswith("404:"):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_msg.replace("404: ", ""))
+        elif error_msg.startswith("403:"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error_msg.replace("403: ", ""))
+        elif error_msg.startswith("500:"):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_msg.replace("500: ", ""))
+        else:
+            # 예상치 못한 기타 오류는 500으로 처리
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")

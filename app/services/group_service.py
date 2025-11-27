@@ -6,14 +6,13 @@ import numpy as np
 from google.cloud import firestore
 
 from app.config.firebase_config import db
-from app.schemas.group_schema import GroupCreate, GroupRead
+from app.schemas.group_schema import GroupCreate, GroupRead, GroupUpdateRequest
 
 # 🔹 패널에서 쓰던 임베딩 모델 재활용
 from app.config.llm_config import get_embedding_model
 
 COLLECTION = "groups"
 DEFAULT_MAX_MEMBER = 10
-
 
 # -------------------------------------------------
 # 공통 유틸
@@ -316,3 +315,38 @@ def _add_member_to_group(group_id: str, user_id: str) -> bool:
     except Exception as e:
         print(f"Error adding member to group {group_id}: {e}")
         return False
+
+# ⭐️⭐️⭐️ [추가] 그룹 정보 업데이트 메서드 ⭐️⭐️⭐️
+def update_group_detail(
+    group_id: str, 
+    current_user_doc_id: str, 
+    update_data: GroupUpdateRequest
+) -> Dict[str, Any]:
+    group_ref = db.collection(COLLECTION).document(group_id)
+    group_doc = group_ref.get()
+
+    if not group_doc.exists:
+        # 404 상태를 나타내는 메시지 사용
+        raise Exception(f"404: Group with ID {group_id} not found.") 
+
+    group_data = group_doc.to_dict()
+    
+    # 1. 리더 권한 검증
+    if group_data.get('leader_id') != current_user_doc_id:
+        # 403 상태를 나타내는 메시지 사용
+        raise Exception("403: Only the group leader can modify group details.") 
+
+    # 2. 업데이트할 데이터 필터링
+    update_payload = update_data.model_dump(exclude_none=True) 
+
+    if not update_payload:
+        return {"message": "No fields provided for update."}
+    
+    # 3. Firestore 업데이트 실행
+    try:
+        group_ref.update(update_payload)
+        return {"message": "Group details updated successfully."}
+    except Exception as e:
+        print(f"Firestore update error: {e}")
+        # DB 오류는 500 상태를 나타냄
+        raise Exception("500: Failed to update group details in database.")

@@ -52,3 +52,14 @@ class GroupMember(BaseModel):
     user_id: str
     nickname: str
     profile_image: Optional[str]
+
+#[추가] 그룹 정보 수정을 위한 Pydantic 모델
+class GroupUpdateRequest(BaseModel):
+    # 모든 필드는 Optional로 설정하여 부분 업데이트(PATCH)를 지원합니다.
+    group_name: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+
+    class Config:
+        # 이 설정을 통해 업데이트할 데이터만 포함된 딕셔너리를 쉽게 생성할 수 있습니다.
+        extra = "ignore"
