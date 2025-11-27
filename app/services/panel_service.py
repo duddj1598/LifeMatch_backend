@@ -255,4 +255,4 @@ def decompose_and_search(query: str, category: Optional[str], conn):
     logging.info(f"[panel] final_ids: {final_ids}")
     logging.info(f"elapsed: {time.time() - start}s")
 
-    return {"id": final_ids}
+    return {"id": final_ids, "length": len(final_ids)}

@@ -44,65 +44,6 @@ def create_user(user: UserCreate):
     user_data = user.dict()
     user_data["created_at"] = datetime.utcnow()
 
-<<<<<<< HEAD
-def login_user(id: str, password: str):
-    users_ref = db.collection("users")
-
-    # 이메일 또는 닉네임으로 문서 검색
-    query_email = users_ref.where("user_email", "==", id).stream()
-    query_nick = users_ref.where("user_nickname", "==", id).stream()
-
-    found_user = None
-    user_doc_id = None
-
-    # 이메일로 먼저 찾기
-    for doc in query_email:
-        found_user = doc.to_dict()
-        user_doc_id = doc.id
-        break
-
-    # 이메일로 못 찾으면 닉네임으로 찾기
-    if not found_user:
-        for doc in query_nick:
-            found_user = doc.to_dict()
-            user_doc_id = doc.id
-            break
-
-    if not found_user:
-        raise HTTPException(status_code=404, detail="존재하지 않는 유저입니다.")
-
-    # 설문 검사 여부
-    survey_response = found_user.get("user_survey_response")
-    has_completed_survey = survey_response is not None and len(survey_response) > 0
-
-    # 비밀번호 체크
-    if found_user["user_password"] != password:
-        raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다.")
-
-    # JWT 생성
-    payload = {
-        "sub": id,
-        "exp": datetime.utcnow() + timedelta(hours=12),
-        "nickname": found_user.get("user_nickname"),
-    }
-    access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
-    return {
-        "status": 200,
-        "accessToken": access_token,
-        "nickname": found_user.get("user_nickname"),
-        "hasCompletedSurvey": has_completed_survey,
-        "user_id": user_doc_id   # 🔥🔥 이게 핵심
-    }
-
-    """
-    유저 로그인 검증 (프론트에서 이미 암호화된 비밀번호를 보냄)
-    """
-    users_ref = db.collection("users")
-    # id로 이메일 또는 닉네임 검색
-    query_email = users_ref.where("user_email", "==", id).stream()
-    query_nick = users_ref.where("user_nickname", "==", id).stream()
-=======
     user_ref = db.collection("users").document()
     user_ref.set(user_data)
 
@@ -111,7 +52,6 @@ def login_user(id: str, password: str):
         "message": "회원가입 성공",
         "user_id": user_ref.id
     }
->>>>>>> main
 
 def login_user(login_id: str, password: str):
     users_ref = db.collection("users")

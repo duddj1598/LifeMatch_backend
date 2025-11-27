@@ -8,14 +8,14 @@ from app.config.firebase_config import db
 from app.schemas.chat_schema import ChatMessageCreate, ChatRoomCreateRequest
 
 
-def get_chat_list(user_doc_id: str):
+def get_chat_list(user_id: str):
     chat_list = []
 
     # ===============================================
     # 🔥 1) 그룹 채팅 목록
     # ===============================================
     groups_ref = db.collection("groups").where(
-        "members", "array_contains", user_doc_id
+        "members", "array_contains", user_id
     ).stream()
 
     for group_doc in groups_ref:
@@ -34,7 +34,7 @@ def get_chat_list(user_doc_id: str):
     # ===============================================
     dm_ref = db.collection("chat_rooms")\
         .where("type", "==", "dm")\
-        .where("members", "array_contains", user_doc_id)\
+        .where("members", "array_contains", user_id)\
         .stream()
 
     for dm_doc in dm_ref:
@@ -42,7 +42,7 @@ def get_chat_list(user_doc_id: str):
         members = data.get("members", [])
 
         # 🔥 본인 제외: 상대방 user_id
-        other_user_id = [m for m in members if m != user_doc_id]
+        other_user_id = [m for m in members if m != user_id]
         print(f"DM 상대방 ID 리스트: {other_user_id}")
         other_user_id = other_user_id[0] if other_user_id else None
         print(f"DM 상대방 ID: {other_user_id}")
@@ -50,15 +50,27 @@ def get_chat_list(user_doc_id: str):
         other_nickname = "알 수 없음"
 
         if other_user_id:
-            user_doc = db.collection("users").document(other_user_id).get()
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            other_nickname = user_data.get("user_nickname", "닉네임 없음")
+            # 🔥 Firestore에서 user_id == 로그인ID 로 문서 검색
+            query = (
+                db.collection("users")
+                .where("user_id", "==", other_user_id)
+                .limit(1)
+                .stream()
+            )
+
+            other_user_doc = None
+            for doc in query:
+                other_user_doc = doc
+                break
+
+            if other_user_doc and other_user_doc.exists:
+                user_data = other_user_doc.to_dict()
+                other_nickname = user_data.get("user_nickname", "닉네임 없음")
 
         chat_list.append({
             "chat_id": dm_doc.id,
             "type": "dm",
-            "name": other_nickname,        # 🔥 DM 상대방 닉네임으로 표시
+            "name": other_nickname,        # 🔥 DM 상대방 닉네임 표시
             "members": members,
             "created_at": data.get("created_at"),
         })
@@ -170,7 +182,6 @@ def _get_dm_chat_history(chat_id, user_doc_id, message_id, size):
 
     messages_ref = dm_ref.collection("messages")
 
-    # 최신 메시지 size개
     if message_id is None:
         query = messages_ref.order_by(
             "message_id", direction=firestore.Query.DESCENDING
@@ -181,7 +192,12 @@ def _get_dm_chat_history(chat_id, user_doc_id, message_id, size):
             .limit(size)
 
     docs = list(query.stream())
-    messages = [doc.to_dict() for doc in docs]
+    messages = []
+
+    for doc in docs:
+        msg = doc.to_dict()
+        msg["is_mine"] = (msg.get("user_id") == user_doc_id)  # 🔥 추가
+        messages.append(msg)
 
     next_msg = messages[-1]["message_id"] if len(messages) == size else None
 
@@ -189,6 +205,7 @@ def _get_dm_chat_history(chat_id, user_doc_id, message_id, size):
         "messages": messages,
         "next_message_id": next_msg,
     }
+
 
 
 
@@ -216,7 +233,13 @@ def get_chat_history(chat_id: str, user_doc_id: str, message_id: int | None, siz
                 .order_by("message_id", direction=firestore.Query.DESCENDING).limit(size)
 
         docs = list(query.stream())
-        messages = [doc.to_dict() for doc in docs]
+        messages = []
+
+        for doc in docs:
+            msg = doc.to_dict()
+            msg["is_mine"] = (msg.get("user_id") == user_doc_id)   # 🔥 추가
+            print(f"메시지: {msg}")
+            messages.append(msg)
 
         next_msg = messages[-1]["message_id"] if len(messages) == size else None
 
@@ -227,6 +250,7 @@ def get_chat_history(chat_id: str, user_doc_id: str, message_id: int | None, siz
 
     # 2) DM 채팅이면 여기로
     return _get_dm_chat_history(chat_id, user_doc_id, message_id, size)
+
 
 
 def _generate_dm_key(u1: str, u2: str) -> str:
