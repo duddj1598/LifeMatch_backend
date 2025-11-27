@@ -10,8 +10,37 @@ SECRET_KEY = os.getenv("JWT_SECRET", "your-secret-key")
 ALGORITHM = "HS256"
 
 
+#중복확인
+def is_id_duplicate(user_id: str) -> bool:
+    """아이디 중복 검사: 존재하면 True"""
+    users_ref = db.collection("users")
+    docs = users_ref.where("user_id", "==", user_id).limit(1).stream()
+    return any(docs)
 
+def is_nickname_duplicate(nickname: str) -> bool:
+    """닉네임 중복 검사: 존재하면 True"""
+    users_ref = db.collection("users")
+    docs = users_ref.where("user_nickname", "==", nickname).limit(1).stream()
+    return any(docs)
+
+def is_email_duplicate(email: str) -> bool:
+    """이메일 중복 검사: 존재하면 True"""
+    users_ref = db.collection("users")
+    docs = users_ref.where("user_email", "==", email).limit(1).stream()
+    return any(docs)
+
+
+#회원가입
 def create_user(user: UserCreate):
+    if is_id_duplicate(user.user_id):
+        raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
+
+    if is_email_duplicate(user.user_email):
+        raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
+        
+    if is_nickname_duplicate(user.user_nickname):
+        raise HTTPException(status_code=409, detail="이미 사용 중인 닉네임입니다.")
+
     user_data = user.dict()
     user_data["created_at"] = datetime.utcnow()
 
@@ -19,10 +48,10 @@ def create_user(user: UserCreate):
     user_ref.set(user_data)
 
     return {
+        "status": 201,
         "message": "회원가입 성공",
         "user_id": user_ref.id
     }
-
 
 
 def login_user(login_id: str, password: str):
@@ -74,7 +103,6 @@ def login_user(login_id: str, password: str):
     }
 
 
-
 def find_user_id(email: str, question: str, answer: str) -> str:
     users_ref = db.collection("users")
     query_ref = users_ref.where(filter=FieldFilter('user_email', '==', email))
@@ -94,7 +122,6 @@ def find_user_id(email: str, question: str, answer: str) -> str:
     ):
         raise HTTPException(status_code=401, detail="본인 확인 정보가 일치하지 않습니다.")
     return found_user.get("user_id")
-
 
 
 def reset_password(login_id: str, email: str, question: str, answer: str, new_password: str):
@@ -132,6 +159,7 @@ def reset_password(login_id: str, email: str, question: str, answer: str, new_pa
     })
 
     return True
+
 
 def get_managed_groups(user_doc_id: str):
     """
