@@ -20,7 +20,7 @@ def invite_user(
     current_user: dict = Depends(get_current_user)
     ):
     requester_user_doc_id = current_user["user_doc_id"]
-    return invite_user_to_group(req)
+    return invite_user_to_group(req, requester_user_doc_id)
 
 
 @router.post("/apply", response_model=GroupApplyResponse)

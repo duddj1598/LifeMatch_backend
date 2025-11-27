@@ -72,19 +72,20 @@ def login(id: str, password: str):
 # 아이디(닉네임) 찾기
 @router.post(
     "/find-id",
-    response_model=FindIdResponse,
     summary="아이디(닉네임) 찾기"
 )
 def api_find_user_id(request: FindIdRequest = Body(...)):
     try:
         user_id = find_user_id(
-            email=request.user_email,
-            question=request.security_question,
-            answer=request.security_answer
+            nickname=request.nickname,                     # ⭐ 그대로
+            question=request.security_question,             # ⭐ 그대로
+            answer=request.security_answer                  # ⭐ 그대로
         )
         return FindIdResponse(status=200, user_id=user_id)
+
     except HTTPException as e:
         raise e
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"서버 오류 발생: {str(e)}")
 
@@ -98,7 +99,6 @@ def api_reset_password(request: ResetPasswordRequest = Body(...)):
     try:
         reset_password(
             login_id=request.login_id,
-            email=request.user_email,
             question=request.security_question,
             answer=request.security_answer,
             new_password=request.new_password

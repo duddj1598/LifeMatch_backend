@@ -32,8 +32,8 @@ def resolve_firestore_user_doc_id(user_id: str):
 # ⭐️ [수정] requester_user_doc_id (JWT에서 온 리더 ID) 인자 추가
 def invite_user_to_group(req: GroupInviteRequest, requester_user_doc_id: str):
 
-    group_id = req.group_id
-    raw_user_id = req.user_id  # 초대 대상의 user_id (GroupInviteRequest 스키마에 유지됨)
+    group_id = req.group_id.strip()
+    raw_user_id = req.user_id.strip()  # 초대 대상의 user_id (GroupInviteRequest 스키마에 유지됨)
 
     # 1) 그룹 확인
     group_doc = db.collection("groups").document(group_id).get()

@@ -48,33 +48,66 @@ def get_home_recommendations(user_id: str) -> dict:
     activities = []
     exclude_ids = set()
 
-    # 🔹 동일 카테고리에서 최대 2개 조회
-    query = db.collection("groups").where("category", "==", target_category).limit(2)
+    # 🔹 1. 메인 쿼리: 2개가 아니라 넉넉하게 5~10개를 가져옵니다.
+    # (내 그룹이 섞여 있을 경우를 대비해 여유분을 가져오는 것)
+    query = db.collection("groups")\
+        .where("category", "==", target_category)\
+        .limit(10) 
+        
     for doc in query.stream():
+        # 2개가 다 찼으면 그만 찾기
+        if len(activities) >= 2:
+            break
+
         group_data = doc.to_dict()
+        leader_id = group_data.get("leader_id")
+
+        # 🚨 [핵심 필터링] 내가 리더인 그룹은 리스트에 넣지 않고 건너뜀!
+        if leader_id == user_id:
+            continue
+
         activities.append(
             RecommendedActivity(
                 group_id=doc.id,
                 group_name=group_data.get("group_name", "이름 없는 모임"),
-                category=group_data.get("category")
+                category=group_data.get("category"),
+                leader_id=leader_id
             )
         )
         exclude_ids.add(doc.id)
 
-    # 🔹 부족하면 기본 카테고리에서 가져오기
-    needed = 2 - len(activities)
-    if needed > 0 and target_category != DEFAULT_CATEGORY:
-        fallback = db.collection("groups").where("category", "==", DEFAULT_CATEGORY).limit(needed)
+    # 🔹 2. Fallback: 부족하면 기본 카테고리에서 채우기
+    # (여기서도 마찬가지로 내 그룹은 제외해야 함)
+    if len(activities) < 2:
+        needed = 2 - len(activities)
+        # 여기서도 넉넉하게 가져옴 (필요한 개수 + 5개 정도 여유)
+        fallback = db.collection("groups")\
+            .where("category", "==", DEFAULT_CATEGORY)\
+            .limit(needed + 5) 
+            
         for doc in fallback.stream():
-            if doc.id not in exclude_ids:
-                group_data = doc.to_dict()
-                activities.append(
-                    RecommendedActivity(
-                        group_id=doc.id,
-                        group_name=group_data.get("group_name", "이름 없는 모임"),
-                        category=group_data.get("category")
-                    )
+            if len(activities) >= 2:
+                break
+
+            # 이미 뽑은 거면 패스
+            if doc.id in exclude_ids:
+                continue
+
+            group_data = doc.to_dict()
+            leader_id = group_data.get("leader_id")
+
+            # 🚨 [핵심 필터링] 여기서도 내 그룹은 제외
+            if leader_id == user_id:
+                continue
+
+            activities.append(
+                RecommendedActivity(
+                    group_id=doc.id,
+                    group_name=group_data.get("group_name", "이름 없는 모임"),
+                    category=group_data.get("category"),
+                    leader_id=leader_id
                 )
+            )
 
     home_data = HomeData(
         user_lifestyle_type=user_type,
@@ -108,7 +141,8 @@ def get_other_recommendations(user_id: str) -> dict:
                 RecommendedActivity(
                     group_id=doc.id,
                     group_name=g.get("group_name", "이름 없는 모임"),
-                    category=g.get("category")
+                    category=g.get("category"),
+                    leader_id=g.get("leader_id")
                 )
             )
 
