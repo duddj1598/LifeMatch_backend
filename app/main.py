@@ -1,4 +1,3 @@
-import uvicorn
 from fastapi import FastAPI
 from app.routes import (
     chat_router,group_router, home_router, lifestyle_test_router, notification_router, panel_router, profile_router, user_router, group_action_router
