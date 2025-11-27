@@ -44,7 +44,14 @@ def create_user(user: UserCreate):
     user_data = user.dict()
     user_data["created_at"] = datetime.utcnow()
 
+    user_ref = db.collection("users").document()
+    user_ref.set(user_data)
 
+    return {
+        "status": 201,
+        "message": "회원가입 성공",
+        "user_id": user_ref.id
+    }
 
 def login_user(login_id: str, password: str):
     users_ref = db.collection("users")

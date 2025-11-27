@@ -22,9 +22,6 @@ def _get_lifestyle_details(type_name: str):
     return None
 
 
-# -------------------------------------------------
-# 🔒 프로필 조회
-# -------------------------------------------------
 def get_user_profile(user_id: str) -> dict:
     user_ref = db.collection("users").document(user_id)
     user_doc = user_ref.get()

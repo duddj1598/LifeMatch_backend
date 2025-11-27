@@ -1,6 +1,7 @@
 serviceAccountKey.json
 __pycache__/
 venv/
+CHROMA_DB/
 .env
 *.pyc
 database/
