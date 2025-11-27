@@ -231,10 +231,13 @@ def search_groups(
     try:
         print("\n" * 2, "---------------------------------")
         print(f"[search_groups] query: {query}, category: {category}")
+
         coll_ref = db.collection(COLLECTION)
         q_ref = coll_ref
 
+        # ------------------------------------------------
         # 1) 카테고리 필터
+        # ------------------------------------------------
         if category:
             q_ref = q_ref.where("category", "==", category)
             print("[search_groups] category filter applied")
@@ -242,46 +245,43 @@ def search_groups(
         docs = list(q_ref.stream())
         print(f"[search_groups] fetched docs: {len(docs)}")
 
-        # 2) 자연어 쿼리가 없으면 그냥 전체 반환
+        results: List[GroupRead] = []
+
+        # ------------------------------------------------
+        # 2) 검색어가 없으면 전체 반환
+        # ------------------------------------------------
         if not query:
-            results: List[GroupRead] = []
-            print("--start appending docs without semantic search--")
+            print("[search_groups] no query → return all")
             for doc in docs:
                 data = doc.to_dict()
                 data = _apply_client_side_defaults(data)
-                data = _strip_timestamp(data)  # 🔥 created_at 제거
+                data = _strip_timestamp(data)
                 results.append(GroupRead(id=doc.id, **data))
-            print(f"[search_groups] result(no query): {len(results)} groups")
             return results
 
-        print("[search_groups] applying semantic search")
-
-        # 3) 자연어 쿼리가 있으면 의미 기반 검색 적용
-        semantic_results = apply_semantic_search(docs, query)
-        print(f"[search_groups] semantic results: {len(semantic_results)} groups")
-
-        # 임베딩 없는 문서 중에서도, 이름 매칭되는 것 있으면 뒤에 추가
-        used_ids = {g.id for g in semantic_results}
-        fallback_results: List[GroupRead] = []
+        # ------------------------------------------------
+        # 3) 검색어가 있다면 이름/설명 부분 문자열 검색
+        # ------------------------------------------------
+        query_lower = query.lower()
 
         for doc in docs:
-            if doc.id in used_ids:
-                continue
-
             data = doc.to_dict()
-            name = data.get("group_name", "")
-            if query.lower() in str(name).lower():
+            name = str(data.get("group_name", "")).lower()
+            desc = str(data.get("description", "")).lower()
+
+            # 🔥 제목/설명 둘 중 하나라도 포함되면 통과
+            if query_lower in name or query_lower in desc:
                 data = _apply_client_side_defaults(data)
-                data = _strip_timestamp(data)  # 🔥 created_at 제거
-                fallback_results.append(GroupRead(id=doc.id, **data))
+                data = _strip_timestamp(data)
+                results.append(GroupRead(id=doc.id, **data))
 
-        print(f"[search_groups] fallback results: {len(fallback_results)} groups")
-
-        return semantic_results + fallback_results
+        print(f"[search_groups] natural search results: {len(results)} groups")
+        return results
 
     except Exception as e:
         print(f"[search_groups] error: {e}")
         return []
+
 
 
 # -------------------------------------------------
