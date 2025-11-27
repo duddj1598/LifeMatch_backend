@@ -11,7 +11,7 @@ class UserCreate(BaseModel):
 
 '''추가됨'''
 class FindIdRequest(BaseModel):
-    user_nickname: str
+    nickname: str
     security_question: str
     security_answer: str
 
