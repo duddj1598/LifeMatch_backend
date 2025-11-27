@@ -8,7 +8,7 @@ load_dotenv()
 PG_HOST = os.getenv("PG_HOST", "localhost")
 PG_PORT = int(os.getenv("PG_PORT", 5432))
 PG_DBNAME = os.getenv("PG_DBNAME", "lifematch_db")
-PG_USER = os.getenv("PG_USER", "leejunho")
+PG_USER = os.getenv("PG_USER", "kimjiwon")
 PG_PASSWORD = os.getenv("PG_PASSWORD", "")
 
 _db_pool = None
