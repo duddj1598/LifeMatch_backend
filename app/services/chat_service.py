@@ -234,7 +234,9 @@ def get_chat_history(chat_id: str, user_doc_id: str, message_id: int | None, siz
             print(f"메시지: {msg}")
             messages.append(msg)
 
-        next_msg = messages[-1]["message_id"] if len(messages) == size else None
+        next_msg = messages[-0]["message_id"] if len(messages) == size else None
+
+        messages.sort(key=lambda m: m["time"])
 
         return {
             "messages": messages,
