@@ -187,7 +187,11 @@ def _get_dm_chat_history(chat_id, user_doc_id, message_id, size):
         msg["is_mine"] = (msg.get("user_id") == user_doc_id)  # 🔥 추가
         messages.append(msg)
 
-    next_msg = messages[-1]["message_id"] if len(messages) == size else None
+    messages.sort(key=lambda m: m["message_id"])
+
+    next_msg = messages[0]["message_id"] if len(messages) == size else None
+
+    print(f"DM 채팅 내역: {messages}")
 
     return {
         "messages": messages,
